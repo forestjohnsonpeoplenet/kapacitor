@@ -1,7 +1,5 @@
 package edge
 
-import "github.com/influxdata/influxdb/models"
-
 type Consumer struct {
 	edge Edge
 	r    Receiver
@@ -43,10 +41,11 @@ func (ec *Consumer) Run() error {
 			}
 		}
 	}
+	return nil
 }
 
 type Receiver interface {
 	BeginBatch(begin BeginBatchMessage) error
-	Point(p models.Point) error
+	Point(p PointMessage) error
 	EndBatch(end EndBatchMessage) error
 }

@@ -1,6 +1,11 @@
 package edge
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
+
+var ErrAborted = errors.New("edge aborted")
 
 type ErrImpossibleType struct {
 	Expected MessageType

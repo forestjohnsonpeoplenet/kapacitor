@@ -12,6 +12,7 @@ const (
 	BeginBatch MessageType = iota
 	EndBatch
 	Point
+	Barrier
 )
 
 type Message interface {
@@ -38,10 +39,20 @@ func (bb BeginBatchMessage) Type() MessageType {
 	return BeginBatch
 }
 
+// EndBatchMessage indicates that all points for a batch have arrived.
 type EndBatchMessage struct {
 	TMax time.Time
 }
 
 func (eb EndBatchMessage) Type() MessageType {
 	return EndBatch
+}
+
+// BarrierMessage indicates that no data older than the barrier time will arrive.
+type BarrierMessage struct {
+	Time time.Time
+}
+
+func (b BarrierMessage) Type() MessageType {
+	return Barrier
 }
