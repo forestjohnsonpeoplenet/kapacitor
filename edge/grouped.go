@@ -51,6 +51,13 @@ func (c *GroupedConsumer) EndBatch(end EndBatchMessage) error {
 	return err
 }
 
+func (c *GroupedConsumer) Barrier(b BarrierMessage) error {
+	// Barriers messages apply to all gorups
+	for _, r := range c.groups {
+		r.Barrier(b)
+	}
+}
+
 type GroupedReceiver interface {
 	NewGroup(group models.GroupID) Receiver
 	DeleteGroup(group models.GroupID)

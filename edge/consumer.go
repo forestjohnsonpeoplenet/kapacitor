@@ -39,6 +39,14 @@ func (ec *Consumer) Run() error {
 			if err := ec.r.EndBatch(end); err != nil {
 				return err
 			}
+		case Barrier:
+			b, ok := msg.(Barrier)
+			if !ok {
+				return ErrImpossibleType{Expected: typ, Actual: msg}
+			}
+			if err := ec.r.Barrier(b); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -48,4 +56,5 @@ type Receiver interface {
 	BeginBatch(begin BeginBatchMessage) error
 	Point(p PointMessage) error
 	EndBatch(end EndBatchMessage) error
+	Barrier(b BarrierMessage) error
 }
