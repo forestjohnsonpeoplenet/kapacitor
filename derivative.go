@@ -27,6 +27,10 @@ func newDerivativeNode(et *ExecutingTask, n *pipeline.DerivativeNode, l *log.Log
 }
 
 func (d *DerivativeNode) runDerivative([]byte) error {
+
+	ins := NewLegacyEdges(d.ins)
+	outs := NewLegacyEdges(d.outs)
+
 	switch d.Provides() {
 	case pipeline.StreamEdge:
 		var mu sync.RWMutex
@@ -39,7 +43,7 @@ func (d *DerivativeNode) runDerivative([]byte) error {
 		}
 		d.statMap.Set(statCardinalityGauge, expvar.NewIntFuncGauge(valueF))
 
-		for p, ok := d.ins[0].NextPoint(); ok; p, ok = d.ins[0].NextPoint() {
+		for p, ok := ins[0].NextPoint(); ok; p, ok = ins[0].NextPoint() {
 			d.timer.Start()
 			mu.RLock()
 			pr := previous[p.Group]
@@ -56,7 +60,7 @@ func (d *DerivativeNode) runDerivative([]byte) error {
 				fields[d.d.As] = value
 				p.Fields = fields
 				d.timer.Pause()
-				for _, child := range d.outs {
+				for _, child := range outs {
 					err := child.CollectPoint(p)
 					if err != nil {
 						return err
@@ -67,7 +71,7 @@ func (d *DerivativeNode) runDerivative([]byte) error {
 			d.timer.Stop()
 		}
 	case pipeline.BatchEdge:
-		for b, ok := d.ins[0].NextBatch(); ok; b, ok = d.ins[0].NextBatch() {
+		for b, ok := ins[0].NextBatch(); ok; b, ok = ins[0].NextBatch() {
 			d.timer.Start()
 			b.Points = b.ShallowCopyPoints()
 			var pr, p models.BatchPoint
@@ -87,7 +91,7 @@ func (d *DerivativeNode) runDerivative([]byte) error {
 				}
 			}
 			d.timer.Stop()
-			for _, child := range d.outs {
+			for _, child := range outs {
 				err := child.CollectBatch(b)
 				if err != nil {
 					return err

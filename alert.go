@@ -453,6 +453,9 @@ func newAlertNode(et *ExecutingTask, n *pipeline.AlertNode, l *log.Logger) (an *
 }
 
 func (a *AlertNode) runAlert([]byte) error {
+	ins := NewLegacyEdges(a.ins)
+	outs := NewLegacyEdges(a.outs)
+
 	valueF := func() int64 {
 		a.statesMu.RLock()
 		l := len(a.states)
@@ -494,7 +497,7 @@ func (a *AlertNode) runAlert([]byte) error {
 
 	switch a.Wants() {
 	case pipeline.StreamEdge:
-		for p, ok := a.ins[0].NextPoint(); ok; p, ok = a.ins[0].NextPoint() {
+		for p, ok := ins[0].NextPoint(); ok; p, ok = ins[0].NextPoint() {
 			a.timer.Start()
 			id, err := a.renderID(p.Name, p.Group, p.Tags)
 			if err != nil {
@@ -565,7 +568,7 @@ func (a *AlertNode) runAlert([]byte) error {
 					}
 				}
 				a.timer.Pause()
-				for _, child := range a.outs {
+				for _, child := range outs {
 					err := child.CollectPoint(p)
 					if err != nil {
 						return err
@@ -576,7 +579,7 @@ func (a *AlertNode) runAlert([]byte) error {
 			a.timer.Stop()
 		}
 	case pipeline.BatchEdge:
-		for b, ok := a.ins[0].NextBatch(); ok; b, ok = a.ins[0].NextBatch() {
+		for b, ok := ins[0].NextBatch(); ok; b, ok = ins[0].NextBatch() {
 			a.timer.Start()
 			id, err := a.renderID(b.Name, b.Group, b.Tags)
 			if err != nil {
@@ -696,7 +699,7 @@ func (a *AlertNode) runAlert([]byte) error {
 					}
 				}
 				a.timer.Pause()
-				for _, child := range a.outs {
+				for _, child := range outs {
 					err := child.CollectBatch(b)
 					if err != nil {
 						return err

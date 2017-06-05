@@ -49,6 +49,7 @@ func NewChannelEdge(size int) Edge {
 func (e *channelEdge) Collect(m Message) error {
 	select {
 	case e.messages <- m:
+		return nil
 	case <-e.aborting:
 		return ErrAborted
 	}
@@ -70,6 +71,7 @@ func (e *channelEdge) Close() error {
 	}
 	close(e.messages)
 	e.state = edgeClosed
+	return nil
 }
 
 func (e *channelEdge) Abort() {

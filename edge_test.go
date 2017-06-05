@@ -14,7 +14,7 @@ func BenchmarkCollectPoint(b *testing.B) {
 	name := "point"
 	b.ReportAllocs()
 	ls := &logService{}
-	e := newEdge("BCollectPoint", "parent", "child", pipeline.StreamEdge, defaultEdgeBufferSize, ls)
+	e := NewLegacyEdge(newEdge("BCollectPoint", "parent", "child", pipeline.StreamEdge, defaultEdgeBufferSize, ls))
 	p := models.Point{
 		Name: name,
 		Tags: models.Tags{

@@ -37,6 +37,10 @@ func newSampleNode(et *ExecutingTask, n *pipeline.SampleNode, l *log.Logger) (*S
 }
 
 func (s *SampleNode) runSample([]byte) error {
+
+	ins := NewLegacyEdges(s.ins)
+	outs := NewLegacyEdges(s.outs)
+
 	valueF := func() int64 {
 		s.countsMu.RLock()
 		l := len(s.counts)
@@ -47,11 +51,11 @@ func (s *SampleNode) runSample([]byte) error {
 
 	switch s.Wants() {
 	case pipeline.StreamEdge:
-		for p, ok := s.ins[0].NextPoint(); ok; p, ok = s.ins[0].NextPoint() {
+		for p, ok := ins[0].NextPoint(); ok; p, ok = ins[0].NextPoint() {
 			s.timer.Start()
 			if s.shouldKeep(p.Group, p.Time) {
 				s.timer.Pause()
-				for _, child := range s.outs {
+				for _, child := range outs {
 					err := child.CollectPoint(p)
 					if err != nil {
 						return err
@@ -62,11 +66,11 @@ func (s *SampleNode) runSample([]byte) error {
 			s.timer.Stop()
 		}
 	case pipeline.BatchEdge:
-		for b, ok := s.ins[0].NextBatch(); ok; b, ok = s.ins[0].NextBatch() {
+		for b, ok := ins[0].NextBatch(); ok; b, ok = ins[0].NextBatch() {
 			s.timer.Start()
 			if s.shouldKeep(b.Group, b.TMax) {
 				s.timer.Pause()
-				for _, child := range s.outs {
+				for _, child := range outs {
 					err := child.CollectBatch(b)
 					if err != nil {
 						return err

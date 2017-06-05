@@ -38,6 +38,10 @@ func newDeleteNode(et *ExecutingTask, n *pipeline.DeleteNode, l *log.Logger) (*D
 }
 
 func (e *DeleteNode) runDelete(snapshot []byte) error {
+
+	ins := NewLegacyEdges(e.ins)
+	outs := NewLegacyEdges(e.outs)
+
 	e.fieldsDeleted = &expvar.Int{}
 	e.tagsDeleted = &expvar.Int{}
 
@@ -45,7 +49,7 @@ func (e *DeleteNode) runDelete(snapshot []byte) error {
 	e.statMap.Set(statsTagsDeleted, e.tagsDeleted)
 	switch e.Provides() {
 	case pipeline.StreamEdge:
-		for p, ok := e.ins[0].NextPoint(); ok; p, ok = e.ins[0].NextPoint() {
+		for p, ok := ins[0].NextPoint(); ok; p, ok = ins[0].NextPoint() {
 			e.timer.Start()
 			p.Fields, p.Tags = e.doDeletes(p.Fields, p.Tags)
 			// Check if we deleted a group by dimension
@@ -67,7 +71,7 @@ func (e *DeleteNode) runDelete(snapshot []byte) error {
 				p.Group = models.ToGroupID(p.Name, p.Tags, p.Dimensions)
 			}
 			e.timer.Stop()
-			for _, child := range e.outs {
+			for _, child := range outs {
 				err := child.CollectPoint(p)
 				if err != nil {
 					return err
@@ -75,7 +79,7 @@ func (e *DeleteNode) runDelete(snapshot []byte) error {
 			}
 		}
 	case pipeline.BatchEdge:
-		for b, ok := e.ins[0].NextBatch(); ok; b, ok = e.ins[0].NextBatch() {
+		for b, ok := ins[0].NextBatch(); ok; b, ok = ins[0].NextBatch() {
 			e.timer.Start()
 			b.Points = b.ShallowCopyPoints()
 			for i := range b.Points {
@@ -87,7 +91,7 @@ func (e *DeleteNode) runDelete(snapshot []byte) error {
 				b.Group = models.ToGroupID(b.Name, b.Tags, b.PointDimensions())
 			}
 			e.timer.Stop()
-			for _, child := range e.outs {
+			for _, child := range outs {
 				err := child.CollectBatch(b)
 				if err != nil {
 					return err

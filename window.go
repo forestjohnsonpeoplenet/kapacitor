@@ -32,6 +32,9 @@ type window interface {
 }
 
 func (w *WindowNode) runWindow([]byte) error {
+	ins := NewLegacyEdges(w.ins)
+	outs := NewLegacyEdges(w.outs)
+
 	var mu sync.RWMutex
 	windows := make(map[models.GroupID]window)
 	valueF := func() int64 {
@@ -43,7 +46,7 @@ func (w *WindowNode) runWindow([]byte) error {
 	w.statMap.Set(statCardinalityGauge, expvar.NewIntFuncGauge(valueF))
 
 	// Loops through points windowing by group
-	for p, ok := w.ins[0].NextPoint(); ok; p, ok = w.ins[0].NextPoint() {
+	for p, ok := ins[0].NextPoint(); ok; p, ok = ins[0].NextPoint() {
 		w.timer.Start()
 		mu.RLock()
 		wnd := windows[p.Group]
@@ -91,7 +94,7 @@ func (w *WindowNode) runWindow([]byte) error {
 		if ok {
 			// Send window to all children
 			w.timer.Pause()
-			for _, child := range w.outs {
+			for _, child := range outs {
 				err := child.CollectBatch(batch)
 				if err != nil {
 					return err

@@ -34,17 +34,21 @@ func newGroupByNode(et *ExecutingTask, n *pipeline.GroupByNode, l *log.Logger) (
 }
 
 func (g *GroupByNode) runGroupBy([]byte) error {
+
+	ins := NewLegacyEdges(g.ins)
+	outs := NewLegacyEdges(g.outs)
+
 	dims := models.Dimensions{
 		ByName: g.g.ByMeasurementFlag,
 	}
 	switch g.Wants() {
 	case pipeline.StreamEdge:
 		dims.TagNames = g.dimensions
-		for pt, ok := g.ins[0].NextPoint(); ok; pt, ok = g.ins[0].NextPoint() {
+		for pt, ok := ins[0].NextPoint(); ok; pt, ok = ins[0].NextPoint() {
 			g.timer.Start()
 			pt = setGroupOnPoint(pt, g.allDimensions, dims, g.g.ExcludedDimensions)
 			g.timer.Stop()
-			for _, child := range g.outs {
+			for _, child := range outs {
 				err := child.CollectPoint(pt)
 				if err != nil {
 					return err
@@ -63,14 +67,14 @@ func (g *GroupByNode) runGroupBy([]byte) error {
 		}
 		g.statMap.Set(statCardinalityGauge, expvar.NewIntFuncGauge(valueF))
 
-		for b, ok := g.ins[0].NextBatch(); ok; b, ok = g.ins[0].NextBatch() {
+		for b, ok := ins[0].NextBatch(); ok; b, ok = ins[0].NextBatch() {
 			g.timer.Start()
 			if !b.TMax.Equal(lastTime) {
 				lastTime = b.TMax
 				// Emit all groups
 				mu.RLock()
 				for id, group := range groups {
-					for _, child := range g.outs {
+					for _, child := range outs {
 						err := child.CollectBatch(*group)
 						if err != nil {
 							return err

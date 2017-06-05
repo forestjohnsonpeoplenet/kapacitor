@@ -30,13 +30,15 @@ func newShiftNode(et *ExecutingTask, n *pipeline.ShiftNode, l *log.Logger) (*Shi
 }
 
 func (s *ShiftNode) runShift([]byte) error {
+	ins := NewLegacyEdges(s.ins)
+	outs := NewLegacyEdges(s.outs)
 	switch s.Wants() {
 	case pipeline.StreamEdge:
-		for p, ok := s.ins[0].NextPoint(); ok; p, ok = s.ins[0].NextPoint() {
+		for p, ok := ins[0].NextPoint(); ok; p, ok = ins[0].NextPoint() {
 			s.timer.Start()
 			p.Time = p.Time.Add(s.shift)
 			s.timer.Stop()
-			for _, child := range s.outs {
+			for _, child := range outs {
 				err := child.CollectPoint(p)
 				if err != nil {
 					return err
@@ -44,7 +46,7 @@ func (s *ShiftNode) runShift([]byte) error {
 			}
 		}
 	case pipeline.BatchEdge:
-		for b, ok := s.ins[0].NextBatch(); ok; b, ok = s.ins[0].NextBatch() {
+		for b, ok := ins[0].NextBatch(); ok; b, ok = ins[0].NextBatch() {
 			s.timer.Start()
 			b.TMax = b.TMax.Add(s.shift)
 			b.Points = b.ShallowCopyPoints()
@@ -52,7 +54,7 @@ func (s *ShiftNode) runShift([]byte) error {
 				b.Points[i].Time = p.Time.Add(s.shift)
 			}
 			s.timer.Stop()
-			for _, child := range s.outs {
+			for _, child := range outs {
 				err := child.CollectBatch(b)
 				if err != nil {
 					return err

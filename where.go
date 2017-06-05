@@ -38,6 +38,9 @@ func newWhereNode(et *ExecutingTask, n *pipeline.WhereNode, l *log.Logger) (wn *
 }
 
 func (w *WhereNode) runWhere(snapshot []byte) error {
+	ins := NewLegacyEdges(w.ins)
+	outs := NewLegacyEdges(w.outs)
+
 	var mu sync.RWMutex
 	valueF := func() int64 {
 		mu.RLock()
@@ -49,7 +52,7 @@ func (w *WhereNode) runWhere(snapshot []byte) error {
 
 	switch w.Wants() {
 	case pipeline.StreamEdge:
-		for p, ok := w.ins[0].NextPoint(); ok; p, ok = w.ins[0].NextPoint() {
+		for p, ok := ins[0].NextPoint(); ok; p, ok = ins[0].NextPoint() {
 			w.timer.Start()
 			mu.RLock()
 			expr := w.expressions[p.Group]
@@ -72,7 +75,7 @@ func (w *WhereNode) runWhere(snapshot []byte) error {
 			}
 			if pass, err := EvalPredicate(expr, scopePool, p.Time, p.Fields, p.Tags); pass {
 				w.timer.Pause()
-				for _, child := range w.outs {
+				for _, child := range outs {
 					err := child.CollectPoint(p)
 					if err != nil {
 						return err
@@ -86,7 +89,7 @@ func (w *WhereNode) runWhere(snapshot []byte) error {
 			w.timer.Stop()
 		}
 	case pipeline.BatchEdge:
-		for b, ok := w.ins[0].NextBatch(); ok; b, ok = w.ins[0].NextBatch() {
+		for b, ok := ins[0].NextBatch(); ok; b, ok = ins[0].NextBatch() {
 			w.timer.Start()
 			mu.RLock()
 			expr := w.expressions[b.Group]
@@ -119,7 +122,7 @@ func (w *WhereNode) runWhere(snapshot []byte) error {
 				}
 			}
 			w.timer.Stop()
-			for _, child := range w.outs {
+			for _, child := range outs {
 				err := child.CollectBatch(b)
 				if err != nil {
 					return err

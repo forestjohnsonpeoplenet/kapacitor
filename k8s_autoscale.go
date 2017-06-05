@@ -69,6 +69,10 @@ func newK8sAutoscaleNode(et *ExecutingTask, n *pipeline.K8sAutoscaleNode, l *log
 }
 
 func (k *K8sAutoscaleNode) runAutoscale([]byte) error {
+
+	ins := NewLegacyEdges(k.ins)
+	outs := NewLegacyEdges(k.outs)
+
 	valueF := func() int64 {
 		k.replicasExprsMu.RLock()
 		l := len(k.replicasExprs)
@@ -87,14 +91,14 @@ func (k *K8sAutoscaleNode) runAutoscale([]byte) error {
 
 	switch k.Wants() {
 	case pipeline.StreamEdge:
-		for p, ok := k.ins[0].NextPoint(); ok; p, ok = k.ins[0].NextPoint() {
+		for p, ok := ins[0].NextPoint(); ok; p, ok = ins[0].NextPoint() {
 			k.timer.Start()
 			if np, err := k.handlePoint(p.Name, p.Group, p.Dimensions, p.Time, p.Fields, p.Tags); err != nil {
 				k.incrementErrorCount()
 				k.logger.Println("E!", err)
 			} else if np.Name != "" {
 				k.timer.Pause()
-				for _, child := range k.outs {
+				for _, child := range outs {
 					err := child.CollectPoint(np)
 					if err != nil {
 						return err
@@ -105,7 +109,7 @@ func (k *K8sAutoscaleNode) runAutoscale([]byte) error {
 			k.timer.Stop()
 		}
 	case pipeline.BatchEdge:
-		for b, ok := k.ins[0].NextBatch(); ok; b, ok = k.ins[0].NextBatch() {
+		for b, ok := ins[0].NextBatch(); ok; b, ok = ins[0].NextBatch() {
 			k.timer.Start()
 			for _, p := range b.Points {
 				if np, err := k.handlePoint(b.Name, b.Group, b.PointDimensions(), p.Time, p.Fields, p.Tags); err != nil {
@@ -113,7 +117,7 @@ func (k *K8sAutoscaleNode) runAutoscale([]byte) error {
 					k.logger.Println("E!", err)
 				} else if np.Name != "" {
 					k.timer.Pause()
-					for _, child := range k.outs {
+					for _, child := range outs {
 						err := child.CollectPoint(np)
 						if err != nil {
 							return err

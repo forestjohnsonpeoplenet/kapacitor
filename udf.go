@@ -66,6 +66,9 @@ func (u *UDFNode) stopUDF() {
 }
 
 func (u *UDFNode) runUDF(snapshot []byte) (err error) {
+	ins := NewLegacyEdges(u.ins)
+	outs := NewLegacyEdges(u.outs)
+
 	defer func() {
 		u.mu.Lock()
 		defer u.mu.Unlock()
@@ -95,7 +98,7 @@ func (u *UDFNode) runUDF(snapshot []byte) (err error) {
 		case pipeline.StreamEdge:
 			pointOut := u.udf.PointOut()
 			for p := range pointOut {
-				for _, out := range u.outs {
+				for _, out := range outs {
 					err := out.CollectPoint(p)
 					if err != nil {
 						forwardErr <- err
@@ -106,7 +109,7 @@ func (u *UDFNode) runUDF(snapshot []byte) (err error) {
 		case pipeline.BatchEdge:
 			batchOut := u.udf.BatchOut()
 			for b := range batchOut {
-				for _, out := range u.outs {
+				for _, out := range outs {
 					err := out.CollectBatch(b)
 					if err != nil {
 						forwardErr <- err
@@ -126,7 +129,7 @@ func (u *UDFNode) runUDF(snapshot []byte) (err error) {
 		switch u.Wants() {
 		case pipeline.StreamEdge:
 			pointIn := u.udf.PointIn()
-			for p, ok := u.ins[0].NextPoint(); ok; p, ok = u.ins[0].NextPoint() {
+			for p, ok := ins[0].NextPoint(); ok; p, ok = ins[0].NextPoint() {
 				u.timer.Start()
 				select {
 				case pointIn <- p:
@@ -137,7 +140,7 @@ func (u *UDFNode) runUDF(snapshot []byte) (err error) {
 			}
 		case pipeline.BatchEdge:
 			batchIn := u.udf.BatchIn()
-			for b, ok := u.ins[0].NextBatch(); ok; b, ok = u.ins[0].NextBatch() {
+			for b, ok := ins[0].NextBatch(); ok; b, ok = ins[0].NextBatch() {
 				u.timer.Start()
 				select {
 				case batchIn <- b:

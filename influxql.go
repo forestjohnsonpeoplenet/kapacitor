@@ -25,6 +25,9 @@ type InfluxQLNode struct {
 	n                      *pipeline.InfluxQLNode
 	createFn               createReduceContextFunc
 	isStreamTransformation bool
+
+	legacyIns  []*LegacyEdge
+	legacyOuts []*LegacyEdge
 }
 
 func newInfluxQLNode(et *ExecutingTask, n *pipeline.InfluxQLNode, l *log.Logger) (*InfluxQLNode, error) {
@@ -38,6 +41,8 @@ func newInfluxQLNode(et *ExecutingTask, n *pipeline.InfluxQLNode, l *log.Logger)
 }
 
 func (n *InfluxQLNode) runInfluxQLs([]byte) error {
+	n.legacyIns = NewLegacyEdges(n.ins)
+	n.legacyOuts = NewLegacyEdges(n.outs)
 	switch n.n.Wants() {
 	case pipeline.StreamEdge:
 		return n.runStreamInfluxQL()
@@ -84,7 +89,7 @@ func (n *InfluxQLNode) runStreamInfluxQL() error {
 	n.statMap.Set(statCardinalityGauge, expvar.NewIntFuncGauge(valueF))
 
 	var kind reflect.Kind
-	for p, ok := n.ins[0].NextPoint(); ok; {
+	for p, ok := n.legacyIns[0].NextPoint(); ok; {
 		n.timer.Start()
 		mu.RLock()
 		context := contexts[p.Group]
@@ -107,7 +112,7 @@ func (n *InfluxQLNode) runStreamInfluxQL() error {
 			if !exists {
 				n.incrementErrorCount()
 				n.logger.Printf("E! field %s missing from point, skipping point", c.field)
-				p, ok = n.ins[0].NextPoint()
+				p, ok = n.legacyIns[0].NextPoint()
 				n.timer.Stop()
 				continue
 			}
@@ -133,7 +138,7 @@ func (n *InfluxQLNode) runStreamInfluxQL() error {
 				n.incrementErrorCount()
 				n.logger.Println("E! failed to aggregate point:", err)
 			}
-			p, ok = n.ins[0].NextPoint()
+			p, ok = n.legacyIns[0].NextPoint()
 
 			err = n.emit(context)
 			if err != nil && err != ErrEmptyEmit {
@@ -148,7 +153,7 @@ func (n *InfluxQLNode) runStreamInfluxQL() error {
 					n.logger.Println("E! failed to aggregate point:", err)
 				}
 				// advance to next point
-				p, ok = n.ins[0].NextPoint()
+				p, ok = n.legacyIns[0].NextPoint()
 			} else {
 				err := n.emit(context)
 				if err != nil {
@@ -172,7 +177,7 @@ func (n *InfluxQLNode) runStreamInfluxQL() error {
 func (n *InfluxQLNode) runBatchInfluxQL() error {
 	var kind reflect.Kind
 	kindChanged := true
-	for b, ok := n.ins[0].NextBatch(); ok; b, ok = n.ins[0].NextBatch() {
+	for b, ok := n.legacyIns[0].NextBatch(); ok; b, ok = n.legacyIns[0].NextBatch() {
 		n.timer.Start()
 		// Create new base context
 		c := baseReduceContext{
@@ -242,7 +247,7 @@ func (n *InfluxQLNode) runBatchInfluxQL() error {
 			}
 			// Emit the complete batch
 			n.timer.Pause()
-			for _, out := range n.outs {
+			for _, out := range n.legacyOuts {
 				if err := out.CollectBatch(eb); err != nil {
 					n.incrementErrorCount()
 					n.logger.Println("E! failed to emit batch points:", err)
@@ -286,7 +291,7 @@ func (n *InfluxQLNode) emit(context reduceContext) error {
 			return err
 		}
 		n.timer.Pause()
-		for _, out := range n.outs {
+		for _, out := range n.legacyOuts {
 			err := out.CollectPoint(p)
 			if err != nil {
 				return err
@@ -296,7 +301,7 @@ func (n *InfluxQLNode) emit(context reduceContext) error {
 	case pipeline.BatchEdge:
 		b := context.EmitBatch()
 		n.timer.Pause()
-		for _, out := range n.outs {
+		for _, out := range n.legacyOuts {
 			err := out.CollectBatch(b)
 			if err != nil {
 				return err

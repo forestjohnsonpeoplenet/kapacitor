@@ -51,14 +51,18 @@ func newHTTPPostNode(et *ExecutingTask, n *pipeline.HTTPPostNode, l *log.Logger)
 }
 
 func (h *HTTPPostNode) runPost([]byte) error {
+
+	ins := NewLegacyEdges(h.ins)
+	outs := NewLegacyEdges(h.outs)
+
 	switch h.Wants() {
 	case pipeline.StreamEdge:
-		for p, ok := h.ins[0].NextPoint(); ok; p, ok = h.ins[0].NextPoint() {
+		for p, ok := ins[0].NextPoint(); ok; p, ok = ins[0].NextPoint() {
 			h.timer.Start()
 			row := models.PointToRow(p)
 			h.postRow(p.Group, row)
 			h.timer.Stop()
-			for _, child := range h.outs {
+			for _, child := range outs {
 				err := child.CollectPoint(p)
 				if err != nil {
 					return err
@@ -66,12 +70,12 @@ func (h *HTTPPostNode) runPost([]byte) error {
 			}
 		}
 	case pipeline.BatchEdge:
-		for b, ok := h.ins[0].NextBatch(); ok; b, ok = h.ins[0].NextBatch() {
+		for b, ok := ins[0].NextBatch(); ok; b, ok = ins[0].NextBatch() {
 			h.timer.Start()
 			row := models.BatchToRow(b)
 			h.postRow(b.Group, row)
 			h.timer.Stop()
-			for _, child := range h.outs {
+			for _, child := range outs {
 				err := child.CollectBatch(b)
 				if err != nil {
 					return err

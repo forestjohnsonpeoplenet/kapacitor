@@ -1,62 +1,179 @@
 package edge
 
 import (
+	"expvar"
 	"sync"
 
-	"github.com/influxdata/kapacitor/expvar"
+	kexpvar "github.com/influxdata/kapacitor/expvar"
 	"github.com/influxdata/kapacitor/models"
 )
 
-// Stats for a given group for this edge
-type Stats struct {
+type GroupInfo struct {
+	Group models.GroupID
+	Tags  models.Tags
+	Dims  models.Dimensions
+}
+
+type GroupStats struct {
 	Collected int64
 	Emitted   int64
-	Tags      models.Tags
-	Dims      models.Dimensions
+	GroupInfo GroupInfo
 }
 
-type StatsEdge struct {
+type StatsEdge interface {
+	Edge
+	Collected() int64
+	Emitted() int64
+	CollectedVar() expvar.Var
+	EmittedVar() expvar.Var
+	ReadGroupStats(func(*GroupStats))
+}
+
+type statsEdge struct {
 	edge Edge
 
-	Collected *expvar.Int
-	Emitted   *expvar.Int
+	collected *kexpvar.Int
+	emitted   *kexpvar.Int
 
 	mu         sync.RWMutex
-	groupStats map[models.GroupID]*Stats
+	groupStats map[models.GroupID]*GroupStats
 }
 
-func (e *StatsEdge) Collect(m Message) error {
-	err := e.edge.Collect(m)
-	e.Collected.Add(1)
-	// How do we handle stats by group for all messages
-	// Do all messages have a group?
-	//   No barrier messages apply to all groups.
-	// My guess is we need to use an outside wrapper.
-	e.incCollected(p.Group, p.Tags, p.Dimensions, 1)
-	return err
+func (e *statsEdge) Collected() int64 {
+	return e.collected.IntValue()
+}
+func (e *statsEdge) Emitted() int64 {
+	return e.emitted.IntValue()
 }
 
-func (e *StatsEdge) Next() (m Message, ok bool) {
+func (e *statsEdge) CollectedVar() expvar.Var {
+	return e.collected
+}
+func (e *statsEdge) EmittedVar() expvar.Var {
+	return e.emitted
+}
+
+func (e *statsEdge) Collect(m Message) error {
+	if err := e.edge.Collect(m); err != nil {
+		return err
+	}
+	e.collected.Add(1)
+	return nil
+}
+
+func (e *statsEdge) Next() (m Message, ok bool) {
 	m, ok = e.edge.Next()
 	if ok {
-		e.Emitted.Add(1)
+		e.emitted.Add(1)
 	}
 	return
 }
 
-func (e *StatsEdge) incCollected(group models.GroupID, tags models.Tags, dims models.Dimensions) {
+func (e *statsEdge) Close() error {
+	return e.edge.Close()
+}
+func (e *statsEdge) Abort() {
+	e.edge.Abort()
+}
+
+// ReadGroupStats calls f for each of the group stats.
+func (e *statsEdge) ReadGroupStats(f func(groupStat *GroupStats)) {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	for _, stats := range e.groupStats {
+		f(stats)
+	}
+}
+
+func (e *statsEdge) incCollected(info GroupInfo, count int64) {
 	// Manually unlock below as defer was too much of a performance hit
 	e.mu.Lock()
 
-	if stats, ok := e.groupStats[group]; ok {
-		stats.collected += count
+	if stats, ok := e.groupStats[info.Group]; ok {
+		stats.Collected += count
 	} else {
-		stats = &edgeStat{
-			collected: count,
-			tags:      tags,
-			dims:      dims,
+		stats = &GroupStats{
+			Collected: count,
+			GroupInfo: info,
 		}
-		e.groupStats[group] = stats
+		e.groupStats[info.Group] = stats
 	}
 	e.mu.Unlock()
+}
+
+// Increment the emitted count of the group for this edge.
+func (e *statsEdge) incEmitted(info GroupInfo, count int64) {
+	// Manually unlock below as defer was too much of a performance hit
+	e.mu.Lock()
+
+	if stats, ok := e.groupStats[info.Group]; ok {
+		stats.Emitted += count
+	} else {
+		stats = &GroupStats{
+			Emitted:   count,
+			GroupInfo: info,
+		}
+		e.groupStats[info.Group] = stats
+	}
+	e.mu.Unlock()
+}
+
+type BatchStatsEdge struct {
+	statsEdge
+
+	currentGroup GroupInfo
+	size         int64
+}
+
+func NewBatchStatsEdge(e Edge) *BatchStatsEdge {
+	return &BatchStatsEdge{
+		statsEdge: statsEdge{
+			edge:       e,
+			groupStats: make(map[models.GroupID]*GroupStats),
+			collected:  new(kexpvar.Int),
+			emitted:    new(kexpvar.Int),
+		},
+	}
+}
+
+func (e *BatchStatsEdge) Collect(m Message) error {
+	if err := e.statsEdge.Collect(m); err != nil {
+		return err
+	}
+	switch m.Type() {
+	case BeginBatch:
+		g := m.(BeginBatchMessage).GroupInfo()
+		e.currentGroup = g
+		e.size = 0
+	case Point:
+		e.size++
+	case EndBatch:
+		e.incCollected(e.currentGroup, e.size)
+	}
+	return nil
+}
+
+type StreamStatsEdge struct {
+	statsEdge
+}
+
+func NewStreamStatsEdge(e Edge) *StreamStatsEdge {
+	return &StreamStatsEdge{
+		statsEdge: statsEdge{
+			edge:       e,
+			groupStats: make(map[models.GroupID]*GroupStats),
+			collected:  new(kexpvar.Int),
+			emitted:    new(kexpvar.Int),
+		},
+	}
+}
+
+func (e *StreamStatsEdge) Collect(m Message) error {
+	if err := e.statsEdge.Collect(m); err != nil {
+		return err
+	}
+	if m.Type() == Point {
+		e.incCollected(m.(PointMessage).GroupInfo(), 1)
+	}
+	return nil
 }

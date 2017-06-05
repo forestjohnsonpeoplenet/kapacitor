@@ -18,6 +18,8 @@ type UnionNode struct {
 	lowMarks []time.Time
 
 	rename string
+
+	legacyOuts []*LegacyEdge
 }
 
 // Create a new  UnionNode which combines all parent data streams into a single stream.
@@ -32,12 +34,15 @@ func newUnionNode(et *ExecutingTask, n *pipeline.UnionNode, l *log.Logger) (*Uni
 }
 
 func (u *UnionNode) runUnion([]byte) error {
+	ins := NewLegacyEdges(u.ins)
+	u.legacyOuts = NewLegacyEdges(u.outs)
+
 	union := make(chan srcPoint)
 	u.rename = u.u.Rename
 	// Spawn goroutine for each parent
 	errors := make(chan error, len(u.ins))
-	for i, in := range u.ins {
-		go func(index int, e *Edge) {
+	for i, in := range ins {
+		go func(index int, e *LegacyEdge) {
 			for p, ok := e.Next(); ok; p, ok = e.Next() {
 				union <- srcPoint{
 					src: index,
@@ -160,7 +165,7 @@ func (u *UnionNode) emit(v models.PointInterface) error {
 		if u.rename != "" {
 			p.Name = u.rename
 		}
-		for _, child := range u.outs {
+		for _, child := range u.legacyOuts {
 			err := child.CollectPoint(p)
 			if err != nil {
 				return err
@@ -171,7 +176,7 @@ func (u *UnionNode) emit(v models.PointInterface) error {
 		if u.rename != "" {
 			b.Name = u.rename
 		}
-		for _, child := range u.outs {
+		for _, child := range u.legacyOuts {
 			err := child.CollectBatch(b)
 			if err != nil {
 				return err

@@ -42,6 +42,10 @@ func (h *HTTPOutNode) Endpoint() string {
 }
 
 func (h *HTTPOutNode) runOut([]byte) error {
+
+	ins := NewLegacyEdges(h.ins)
+	outs := NewLegacyEdges(h.outs)
+
 	valueF := func() int64 {
 		h.mu.RLock()
 		l := len(h.groupSeriesIdx)
@@ -88,12 +92,12 @@ func (h *HTTPOutNode) runOut([]byte) error {
 
 	switch h.Wants() {
 	case pipeline.StreamEdge:
-		for p, ok := h.ins[0].NextPoint(); ok; p, ok = h.ins[0].NextPoint() {
+		for p, ok := ins[0].NextPoint(); ok; p, ok = ins[0].NextPoint() {
 			h.timer.Start()
 			row := models.PointToRow(p)
 			h.updateResultWithRow(p.Group, row)
 			h.timer.Stop()
-			for _, child := range h.outs {
+			for _, child := range outs {
 				err := child.CollectPoint(p)
 				if err != nil {
 					return err
@@ -101,12 +105,12 @@ func (h *HTTPOutNode) runOut([]byte) error {
 			}
 		}
 	case pipeline.BatchEdge:
-		for b, ok := h.ins[0].NextBatch(); ok; b, ok = h.ins[0].NextBatch() {
+		for b, ok := ins[0].NextBatch(); ok; b, ok = ins[0].NextBatch() {
 			h.timer.Start()
 			row := models.BatchToRow(b)
 			h.updateResultWithRow(b.Group, row)
 			h.timer.Stop()
-			for _, child := range h.outs {
+			for _, child := range outs {
 				err := child.CollectBatch(b)
 				if err != nil {
 					return err

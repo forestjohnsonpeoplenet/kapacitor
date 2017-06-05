@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/influxdata/kapacitor/edge"
 	kexpvar "github.com/influxdata/kapacitor/expvar"
 	"github.com/influxdata/kapacitor/models"
 	"github.com/influxdata/kapacitor/pipeline"
@@ -241,7 +242,7 @@ func (n *node) edot(buf *bytes.Buffer, labels bool) {
 				fmt.Sprintf("%s -> %s [label=\"processed=%d\"];\n",
 					n.Name(),
 					c.Name(),
-					n.outs[i].collectedCount(),
+					n.outs[i].Collected(),
 				),
 			))
 		}
@@ -273,7 +274,7 @@ func (n *node) edot(buf *bytes.Buffer, labels bool) {
 				fmt.Sprintf("%s -> %s [processed=\"%d\"];\n",
 					n.Name(),
 					c.Name(),
-					n.outs[i].collectedCount(),
+					n.outs[i].Collected(),
 				),
 			))
 		}
@@ -283,7 +284,7 @@ func (n *node) edot(buf *bytes.Buffer, labels bool) {
 // node collected count is the sum of emitted counts of parent edges
 func (n *node) collectedCount() (count int64) {
 	for _, in := range n.ins {
-		count += in.emittedCount()
+		count += in.Emitted()
 	}
 	return
 }
@@ -291,7 +292,7 @@ func (n *node) collectedCount() (count int64) {
 // node emitted count is the sum of collected counts of children edges
 func (n *node) emittedCount() (count int64) {
 	for _, out := range n.outs {
-		count += out.collectedCount()
+		count += out.Collected()
 	}
 	return
 }
@@ -331,14 +332,14 @@ func (n *node) nodeStatsByGroup() (stats map[models.GroupID]nodeStats) {
 	// Get the counts for just one output.
 	stats = make(map[models.GroupID]nodeStats)
 	if len(n.outs) > 0 {
-		n.outs[0].readGroupStats(func(group models.GroupID, c, e int64, tags models.Tags, dims models.Dimensions) {
-			stats[group] = nodeStats{
+		n.outs[0].ReadGroupStats(func(g *edge.GroupStats) {
+			stats[g.GroupInfo.Group] = nodeStats{
 				Fields: models.Fields{
 					// A node's emitted count is the collected count of its output.
-					"emitted": c,
+					"emitted": g.Collected,
 				},
-				Tags:       tags,
-				Dimensions: dims,
+				Tags:       g.GroupInfo.Tags,
+				Dimensions: g.GroupInfo.Dims,
 			}
 		})
 	}

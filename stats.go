@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/influxdata/kapacitor/edge"
 	"github.com/influxdata/kapacitor/models"
 	"github.com/influxdata/kapacitor/pipeline"
 )
@@ -87,7 +88,7 @@ func (s *StatsNode) emit(now time.Time) error {
 		point.Tags = stat.Tags
 		s.timer.Pause()
 		for _, out := range s.outs {
-			err := out.CollectPoint(point)
+			err := out.Collect(edge.PointMessage(point))
 			if err != nil {
 				return err
 			}

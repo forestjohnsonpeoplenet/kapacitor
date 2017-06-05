@@ -50,6 +50,10 @@ type flattenBatchBuffer struct {
 }
 
 func (n *FlattenNode) runFlatten([]byte) error {
+
+	ins := NewLegacyEdges(n.ins)
+	outs := NewLegacyEdges(n.outs)
+
 	var mu sync.RWMutex
 	switch n.Wants() {
 	case pipeline.StreamEdge:
@@ -62,7 +66,7 @@ func (n *FlattenNode) runFlatten([]byte) error {
 		}
 		n.statMap.Set(statCardinalityGauge, expvar.NewIntFuncGauge(valueF))
 
-		for p, ok := n.ins[0].NextPoint(); ok; p, ok = n.ins[0].NextPoint() {
+		for p, ok := ins[0].NextPoint(); ok; p, ok = ins[0].NextPoint() {
 			n.timer.Start()
 			t := p.Time.Round(n.f.Tolerance)
 			mu.RLock()
@@ -101,7 +105,7 @@ func (n *FlattenNode) runFlatten([]byte) error {
 						Fields:     fields,
 					}
 					n.timer.Pause()
-					for _, out := range n.outs {
+					for _, out := range outs {
 						err := out.CollectPoint(flatP)
 						if err != nil {
 							return err
@@ -126,7 +130,7 @@ func (n *FlattenNode) runFlatten([]byte) error {
 		}
 		n.statMap.Set(statCardinalityGauge, expvar.NewIntFuncGauge(valueF))
 
-		for b, ok := n.ins[0].NextBatch(); ok; b, ok = n.ins[0].NextBatch() {
+		for b, ok := ins[0].NextBatch(); ok; b, ok = ins[0].NextBatch() {
 			n.timer.Start()
 			t := b.TMax.Round(n.f.Tolerance)
 			mu.RLock()
@@ -171,7 +175,7 @@ func (n *FlattenNode) runFlatten([]byte) error {
 					delete(currentBuf.Points, t)
 				}
 				n.timer.Pause()
-				for _, out := range n.outs {
+				for _, out := range outs {
 					err := out.CollectBatch(flatBatch)
 					if err != nil {
 						return err

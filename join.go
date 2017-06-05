@@ -33,6 +33,9 @@ type JoinNode struct {
 
 	reported    map[int]bool
 	allReported bool
+
+	legacyIns  []*LegacyEdge
+	legacyOuts []*LegacyEdge
 }
 
 // Create a new JoinNode, which takes pairs from parent streams combines them into a single point.
@@ -67,6 +70,9 @@ func newJoinNode(et *ExecutingTask, n *pipeline.JoinNode, l *log.Logger) (*JoinN
 }
 
 func (j *JoinNode) runJoin([]byte) error {
+	j.legacyIns = NewLegacyEdges(j.ins)
+	j.legacyOuts = NewLegacyEdges(j.outs)
+
 	j.groups = make(map[models.GroupID]*group)
 	valueF := func() int64 {
 		j.groupsMu.RLock()
@@ -77,9 +83,9 @@ func (j *JoinNode) runJoin([]byte) error {
 	j.statMap.Set(statCardinalityGauge, expvar.NewIntFuncGauge(valueF))
 
 	groupErrs := make(chan error, 1)
-	done := make(chan struct{}, len(j.ins))
+	done := make(chan struct{}, len(j.legacyIns))
 
-	for i := range j.ins {
+	for i := range j.legacyIns {
 		// Start gorouting per parent so we do not deadlock.
 		// This way independent of the order that parents receive data
 		// we can handle it.
@@ -88,7 +94,7 @@ func (j *JoinNode) runJoin([]byte) error {
 			defer func() {
 				done <- struct{}{}
 			}()
-			in := j.ins[i]
+			in := j.legacyIns[i]
 			for p, ok := in.Next(); ok; p, ok = in.Next() {
 				t.Start()
 				srcP := srcPoint{src: i, p: p}
@@ -109,7 +115,7 @@ func (j *JoinNode) runJoin([]byte) error {
 			}
 		}(i, t)
 	}
-	for range j.ins {
+	for range j.legacyIns {
 		select {
 		case <-done:
 		case err := <-groupErrs:
@@ -148,7 +154,7 @@ func (j *JoinNode) matchPoints(p srcPoint, groupErrs chan<- error) {
 
 	if !j.allReported {
 		j.reported[p.src] = true
-		j.allReported = len(j.reported) == len(j.ins)
+		j.allReported = len(j.reported) == len(j.legacyIns)
 	}
 	t := p.p.PointTime().Round(j.j.Tolerance)
 
@@ -167,7 +173,7 @@ func (j *JoinNode) matchPoints(p srcPoint, groupErrs chan<- error) {
 	// Determine lowMark, the oldest time per parent per group.
 	var lowMark time.Time
 	if j.allReported {
-		for s := 0; s < len(j.ins); s++ {
+		for s := 0; s < len(j.legacyIns); s++ {
 			sg := srcGroup{src: s, groupId: groupId}
 			if lm := j.lowMarks[sg]; lowMark.IsZero() || lm.Before(lowMark) {
 				lowMark = lm
@@ -286,7 +292,7 @@ func (j *JoinNode) getGroup(p models.PointInterface, groupErrs chan<- error) *gr
 	group := j.groups[p.PointGroup()]
 	j.groupsMu.RUnlock()
 	if group == nil {
-		group = newGroup(len(j.ins), j)
+		group = newGroup(len(j.legacyIns), j)
 		j.groupsMu.Lock()
 		j.groups[p.PointGroup()] = group
 		j.runningGroups.Add(1)
@@ -463,7 +469,7 @@ func (g *group) emitJoinedSet(set *joinset) error {
 	case pipeline.StreamEdge:
 		p, ok := set.JoinIntoPoint()
 		if ok {
-			for _, out := range g.j.outs {
+			for _, out := range g.j.legacyOuts {
 				err := out.CollectPoint(p)
 				if err != nil {
 					return err
@@ -473,7 +479,7 @@ func (g *group) emitJoinedSet(set *joinset) error {
 	case pipeline.BatchEdge:
 		b, ok := set.JoinIntoBatch()
 		if ok {
-			for _, out := range g.j.outs {
+			for _, out := range g.j.legacyOuts {
 				err := out.CollectBatch(b)
 				if err != nil {
 					return err

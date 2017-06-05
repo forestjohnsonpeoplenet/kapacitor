@@ -1253,6 +1253,7 @@ func (s *Service) doRecordStream(id string, dataSource DataSource, stop time.Tim
 	if err != nil {
 		return err
 	}
+	le := kapacitor.NewLegacyEdge(e)
 	sw, err := dataSource.StreamWriter()
 	if err != nil {
 		return err
@@ -1262,7 +1263,7 @@ func (s *Service) doRecordStream(id string, dataSource DataSource, stop time.Tim
 	done := make(chan struct{})
 	go func() {
 		closed := false
-		for p, ok := e.NextPoint(); ok; p, ok = e.NextPoint() {
+		for p, ok := le.NextPoint(); ok; p, ok = le.NextPoint() {
 			if closed {
 				continue
 			}

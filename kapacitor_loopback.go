@@ -36,13 +36,16 @@ func newKapacitorLoopbackNode(et *ExecutingTask, n *pipeline.KapacitorLoopbackNo
 }
 
 func (k *KapacitorLoopbackNode) runOut([]byte) error {
+
+	ins := NewLegacyEdges(k.ins)
+
 	k.pointsWritten = &expvar.Int{}
 
 	k.statMap.Set(statsInfluxDBPointsWritten, k.pointsWritten)
 
 	switch k.Wants() {
 	case pipeline.StreamEdge:
-		for p, ok := k.ins[0].NextPoint(); ok; p, ok = k.ins[0].NextPoint() {
+		for p, ok := ins[0].NextPoint(); ok; p, ok = ins[0].NextPoint() {
 			k.timer.Start()
 			if k.k.Database != "" {
 				p.Database = k.k.Database
@@ -69,7 +72,7 @@ func (k *KapacitorLoopbackNode) runOut([]byte) error {
 			k.timer.Stop()
 		}
 	case pipeline.BatchEdge:
-		for b, ok := k.ins[0].NextBatch(); ok; b, ok = k.ins[0].NextBatch() {
+		for b, ok := ins[0].NextBatch(); ok; b, ok = ins[0].NextBatch() {
 			k.timer.Start()
 			if k.k.Measurement != "" {
 				b.Name = k.k.Measurement

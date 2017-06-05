@@ -40,7 +40,7 @@ func (ec *Consumer) Run() error {
 				return err
 			}
 		case Barrier:
-			b, ok := msg.(Barrier)
+			b, ok := msg.(BarrierMessage)
 			if !ok {
 				return ErrImpossibleType{Expected: typ, Actual: msg}
 			}

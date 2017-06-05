@@ -32,6 +32,10 @@ func newDefaultNode(et *ExecutingTask, n *pipeline.DefaultNode, l *log.Logger) (
 }
 
 func (e *DefaultNode) runDefault(snapshot []byte) error {
+
+	ins := NewLegacyEdges(e.ins)
+	outs := NewLegacyEdges(e.outs)
+
 	e.fieldsDefaulted = &expvar.Int{}
 	e.tagsDefaulted = &expvar.Int{}
 
@@ -39,12 +43,12 @@ func (e *DefaultNode) runDefault(snapshot []byte) error {
 	e.statMap.Set(statsTagsDefaulted, e.tagsDefaulted)
 	switch e.Provides() {
 	case pipeline.StreamEdge:
-		for p, ok := e.ins[0].NextPoint(); ok; p, ok = e.ins[0].NextPoint() {
+		for p, ok := ins[0].NextPoint(); ok; p, ok = ins[0].NextPoint() {
 			e.timer.Start()
 			p.Fields, p.Tags = e.setDefaults(p.Fields, p.Tags)
 			p.UpdateGroup()
 			e.timer.Stop()
-			for _, child := range e.outs {
+			for _, child := range outs {
 				err := child.CollectPoint(p)
 				if err != nil {
 					return err
@@ -52,7 +56,7 @@ func (e *DefaultNode) runDefault(snapshot []byte) error {
 			}
 		}
 	case pipeline.BatchEdge:
-		for b, ok := e.ins[0].NextBatch(); ok; b, ok = e.ins[0].NextBatch() {
+		for b, ok := ins[0].NextBatch(); ok; b, ok = ins[0].NextBatch() {
 			e.timer.Start()
 			b.Points = b.ShallowCopyPoints()
 			_, b.Tags = e.setDefaults(nil, b.Tags)
@@ -61,7 +65,7 @@ func (e *DefaultNode) runDefault(snapshot []byte) error {
 				b.Points[i].Fields, b.Points[i].Tags = e.setDefaults(b.Points[i].Fields, b.Points[i].Tags)
 			}
 			e.timer.Stop()
-			for _, child := range e.outs {
+			for _, child := range outs {
 				err := child.CollectBatch(b)
 				if err != nil {
 					return err

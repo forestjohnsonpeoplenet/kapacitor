@@ -139,6 +139,8 @@ type QueryNode struct {
 	batchesQueried *expvar.Int
 	pointsQueried  *expvar.Int
 	byName         bool
+
+	legacyIns []*LegacyEdge
 }
 
 func newQueryNode(et *ExecutingTask, n *pipeline.QueryNode, l *log.Logger) (*QueryNode, error) {
@@ -219,6 +221,7 @@ func (b *QueryNode) DBRPs() ([]DBRP, error) {
 func (b *QueryNode) Start() {
 	b.queryMu.Lock()
 	defer b.queryMu.Unlock()
+	b.legacyIns = NewLegacyEdges(b.ins)
 	b.queryErr = make(chan error, 1)
 	go func() {
 		b.queryErr <- b.doQuery()
@@ -265,7 +268,7 @@ func (b *QueryNode) Queries(start, stop time.Time) ([]*Query, error) {
 
 // Query InfluxDB and collect batches on batch collector.
 func (b *QueryNode) doQuery() error {
-	defer b.ins[0].Close()
+	defer b.legacyIns[0].Close()
 	b.batchesQueried = &expvar.Int{}
 	b.pointsQueried = &expvar.Int{}
 
@@ -325,7 +328,7 @@ func (b *QueryNode) doQuery() error {
 					b.batchesQueried.Add(1)
 					b.pointsQueried.Add(int64(len(bch.Points)))
 					b.timer.Pause()
-					err := b.ins[0].CollectBatch(bch)
+					err := b.legacyIns[0].CollectBatch(bch)
 					if err != nil {
 						return err
 					}
@@ -338,6 +341,9 @@ func (b *QueryNode) doQuery() error {
 }
 
 func (b *QueryNode) runBatch([]byte) error {
+	ins := NewLegacyEdges(b.ins)
+	outs := NewLegacyEdges(b.outs)
+
 	errC := make(chan error, 1)
 	go func() {
 		defer func() {
@@ -346,8 +352,8 @@ func (b *QueryNode) runBatch([]byte) error {
 				errC <- fmt.Errorf("%v", err)
 			}
 		}()
-		for bt, ok := b.ins[0].NextBatch(); ok; bt, ok = b.ins[0].NextBatch() {
-			for _, child := range b.outs {
+		for bt, ok := ins[0].NextBatch(); ok; bt, ok = ins[0].NextBatch() {
+			for _, child := range outs {
 				err := child.CollectBatch(bt)
 				if err != nil {
 					errC <- err

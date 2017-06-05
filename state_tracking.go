@@ -68,6 +68,8 @@ func (stn *StateTrackingNode) group(g models.GroupID) (*stateTrackingGroup, erro
 }
 
 func (stn *StateTrackingNode) runStateTracking(_ []byte) error {
+	ins := NewLegacyEdges(stn.ins)
+	outs := NewLegacyEdges(stn.outs)
 	// Setup working_cardinality gauage.
 	valueF := func() int64 {
 		stn.groupsMu.RLock()
@@ -79,7 +81,7 @@ func (stn *StateTrackingNode) runStateTracking(_ []byte) error {
 
 	switch stn.Provides() {
 	case pipeline.StreamEdge:
-		for p, ok := stn.ins[0].NextPoint(); ok; p, ok = stn.ins[0].NextPoint() {
+		for p, ok := ins[0].NextPoint(); ok; p, ok = ins[0].NextPoint() {
 			stn.timer.Start()
 			stg, err := stn.group(p.Group)
 			if err != nil {
@@ -98,7 +100,7 @@ func (stn *StateTrackingNode) runStateTracking(_ []byte) error {
 			p.Fields[stn.as] = stg.tracker.track(models.BatchPointFromPoint(p), pass)
 
 			stn.timer.Stop()
-			for _, child := range stn.outs {
+			for _, child := range outs {
 				err := child.CollectPoint(p)
 				if err != nil {
 					return err
@@ -106,7 +108,7 @@ func (stn *StateTrackingNode) runStateTracking(_ []byte) error {
 			}
 		}
 	case pipeline.BatchEdge:
-		for b, ok := stn.ins[0].NextBatch(); ok; b, ok = stn.ins[0].NextBatch() {
+		for b, ok := ins[0].NextBatch(); ok; b, ok = ins[0].NextBatch() {
 			stn.timer.Start()
 
 			stg, err := stn.group(b.Group)
@@ -132,7 +134,7 @@ func (stn *StateTrackingNode) runStateTracking(_ []byte) error {
 			}
 
 			stn.timer.Stop()
-			for _, child := range stn.outs {
+			for _, child := range outs {
 				err := child.CollectBatch(b)
 				if err != nil {
 					return err

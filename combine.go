@@ -25,6 +25,8 @@ type CombineNode struct {
 	expressionsByGroupMu sync.RWMutex
 
 	combination combination
+
+	legacyOuts []*LegacyEdge
 }
 
 // Create a new CombineNode, which combines a stream with itself dynamically.
@@ -66,6 +68,9 @@ func (t timeList) Less(i, j int) bool { return t[i].Before(t[j]) }
 func (t timeList) Swap(i, j int)      { t[i], t[j] = t[j], t[i] }
 
 func (n *CombineNode) runCombine([]byte) error {
+	ins := NewLegacyEdges(n.ins)
+	n.legacyOuts = NewLegacyEdges(n.outs)
+
 	valueF := func() int64 {
 		n.expressionsByGroupMu.RLock()
 		l := len(n.expressionsByGroup)
@@ -77,7 +82,7 @@ func (n *CombineNode) runCombine([]byte) error {
 	switch n.Wants() {
 	case pipeline.StreamEdge:
 		buffers := make(map[models.GroupID]*buffer)
-		for p, ok := n.ins[0].NextPoint(); ok; p, ok = n.ins[0].NextPoint() {
+		for p, ok := ins[0].NextPoint(); ok; p, ok = ins[0].NextPoint() {
 			n.timer.Start()
 			t := p.Time.Round(n.c.Tolerance)
 			currentBuf, ok := buffers[p.Group]
@@ -113,7 +118,7 @@ func (n *CombineNode) runCombine([]byte) error {
 	case pipeline.BatchEdge:
 		allBuffers := make(map[models.GroupID]map[time.Time]*buffer)
 		groupTimes := make(map[models.GroupID]time.Time)
-		for b, ok := n.ins[0].NextBatch(); ok; b, ok = n.ins[0].NextBatch() {
+		for b, ok := ins[0].NextBatch(); ok; b, ok = ins[0].NextBatch() {
 			n.timer.Start()
 			t := b.TMax.Round(n.c.Tolerance)
 			buffers, ok := allBuffers[b.Group]
@@ -237,7 +242,7 @@ func (n *CombineNode) combineBuffer(buf *buffer) error {
 			p.Tags = rp.Tags
 
 			n.timer.Pause()
-			for _, out := range n.outs {
+			for _, out := range n.legacyOuts {
 				err := out.CollectPoint(p)
 				if err != nil {
 					return err

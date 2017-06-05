@@ -26,9 +26,9 @@ func newStreamNode(et *ExecutingTask, n *pipeline.StreamNode, l *log.Logger) (*S
 }
 
 func (s *StreamNode) runSourceStream([]byte) error {
-	for pt, ok := s.ins[0].NextPoint(); ok; pt, ok = s.ins[0].NextPoint() {
+	for m, ok := s.ins[0].Next(); ok; m, ok = s.ins[0].Next() {
 		for _, child := range s.outs {
-			err := child.CollectPoint(pt)
+			err := child.Collect(m)
 			if err != nil {
 				return err
 			}
@@ -75,10 +75,13 @@ func newFromNode(et *ExecutingTask, n *pipeline.FromNode, l *log.Logger) (*FromN
 }
 
 func (s *FromNode) runStream([]byte) error {
+	ins := NewLegacyEdges(s.ins)
+	outs := NewLegacyEdges(s.outs)
+
 	dims := models.Dimensions{
 		ByName: s.s.GroupByMeasurementFlag,
 	}
-	for pt, ok := s.ins[0].NextPoint(); ok; pt, ok = s.ins[0].NextPoint() {
+	for pt, ok := ins[0].NextPoint(); ok; pt, ok = ins[0].NextPoint() {
 		s.timer.Start()
 		if s.matches(pt) {
 			if s.s.Truncate != 0 {
@@ -90,7 +93,7 @@ func (s *FromNode) runStream([]byte) error {
 			dims.TagNames = s.dimensions
 			pt = setGroupOnPoint(pt, s.allDimensions, dims, nil)
 			s.timer.Pause()
-			for _, child := range s.outs {
+			for _, child := range outs {
 				err := child.CollectPoint(pt)
 				if err != nil {
 					return err

@@ -33,12 +33,16 @@ func newLogNode(et *ExecutingTask, n *pipeline.LogNode, l *log.Logger) (*LogNode
 }
 
 func (s *LogNode) runLog([]byte) error {
+
+	ins := NewLegacyEdges(s.ins)
+	outs := NewLegacyEdges(s.outs)
+
 	key := fmt.Sprintf("%c! %s", wlog.ReverseLevels[s.level], s.prefix)
 	var buf bytes.Buffer
 	env := json.NewEncoder(&buf)
 	switch s.Wants() {
 	case pipeline.StreamEdge:
-		for p, ok := s.ins[0].NextPoint(); ok; p, ok = s.ins[0].NextPoint() {
+		for p, ok := ins[0].NextPoint(); ok; p, ok = ins[0].NextPoint() {
 			buf.Reset()
 			if err := env.Encode(p); err != nil {
 				s.incrementErrorCount()
@@ -46,7 +50,7 @@ func (s *LogNode) runLog([]byte) error {
 				continue
 			}
 			s.logger.Println(key, buf.String())
-			for _, child := range s.outs {
+			for _, child := range outs {
 				err := child.CollectPoint(p)
 				if err != nil {
 					return err
@@ -54,7 +58,7 @@ func (s *LogNode) runLog([]byte) error {
 			}
 		}
 	case pipeline.BatchEdge:
-		for b, ok := s.ins[0].NextBatch(); ok; b, ok = s.ins[0].NextBatch() {
+		for b, ok := ins[0].NextBatch(); ok; b, ok = ins[0].NextBatch() {
 			buf.Reset()
 			if err := env.Encode(b); err != nil {
 				s.incrementErrorCount()
@@ -62,7 +66,7 @@ func (s *LogNode) runLog([]byte) error {
 				continue
 			}
 			s.logger.Println(key, buf.String())
-			for _, child := range s.outs {
+			for _, child := range outs {
 				err := child.CollectBatch(b)
 				if err != nil {
 					return err

@@ -158,7 +158,7 @@ type TaskMaster struct {
 	// We are mapping from (db, rp, measurement) to map of task ids to their edges
 	// The outer map (from dbrp&measurement) is for fast access on forkPoint
 	// While the inner map is for handling fork deletions better (see taskToForkKeys)
-	forks map[forkKey]map[string]*Edge
+	forks map[forkKey]map[string]*LegacyEdge
 
 	// Stats for number of points each fork has received
 	forkStats map[forkKey]*expvar.Int
@@ -194,7 +194,7 @@ type forkKey struct {
 func NewTaskMaster(id string, info vars.Infoer, l LogService) *TaskMaster {
 	return &TaskMaster{
 		id:             id,
-		forks:          make(map[forkKey]map[string]*Edge),
+		forks:          make(map[forkKey]map[string]*LegacyEdge),
 		forkStats:      make(map[forkKey]*expvar.Int),
 		taskToForkKeys: make(map[string][]forkKey),
 		batches:        make(map[string][]BatchCollector),
@@ -444,7 +444,7 @@ func (tm *TaskMaster) StartTask(t *Task) (*ExecutingTask, error) {
 		for i := 0; i < count; i++ {
 			in := newEdge(t.ID, "batch", fmt.Sprintf("batch%d", i), pipeline.BatchEdge, defaultEdgeBufferSize, tm.LogService)
 			ins[i] = in
-			tm.batches[t.ID] = append(tm.batches[t.ID], in)
+			tm.batches[t.ID] = append(tm.batches[t.ID], NewLegacyEdge(in))
 		}
 	}
 
@@ -565,7 +565,7 @@ func (tm *TaskMaster) stream(name string) (StreamCollector, error) {
 	if tm.closed {
 		return nil, ErrTaskMasterClosed
 	}
-	in := newEdge(fmt.Sprintf("task_master:%s", tm.id), name, "stream", pipeline.StreamEdge, defaultEdgeBufferSize, tm.LogService)
+	in := NewLegacyEdge(newEdge(fmt.Sprintf("task_master:%s", tm.id), name, "stream", pipeline.StreamEdge, defaultEdgeBufferSize, tm.LogService))
 	tm.wg.Add(1)
 	go func() {
 		defer tm.wg.Done()
@@ -574,7 +574,7 @@ func (tm *TaskMaster) stream(name string) (StreamCollector, error) {
 	return in, nil
 }
 
-func (tm *TaskMaster) runForking(in *Edge) {
+func (tm *TaskMaster) runForking(in *LegacyEdge) {
 	for p, ok := in.NextPoint(); ok; p, ok = in.NextPoint() {
 		tm.forkPoint(p)
 	}
@@ -712,6 +712,7 @@ func (tm *TaskMaster) newFork(taskName string, dbrps []DBRP, measurements []stri
 	}
 
 	e := newEdge(taskName, "stream", "stream0", pipeline.StreamEdge, defaultEdgeBufferSize, tm.LogService)
+	le := NewLegacyEdge(e)
 
 	for _, key := range forkKeys(dbrps, measurements) {
 		tm.taskToForkKeys[taskName] = append(tm.taskToForkKeys[taskName], key)
@@ -719,11 +720,11 @@ func (tm *TaskMaster) newFork(taskName string, dbrps []DBRP, measurements []stri
 		// Add the task to the tasksMap if it doesn't exists
 		tasksMap, ok := tm.forks[key]
 		if !ok {
-			tasksMap = make(map[string]*Edge, 0)
+			tasksMap = make(map[string]*LegacyEdge, 0)
 		}
 
 		// Add the edge to task map
-		tasksMap[taskName] = e
+		tasksMap[taskName] = le
 
 		// update the task map in the forks
 		tm.forks[key] = tasksMap

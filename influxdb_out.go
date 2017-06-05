@@ -48,6 +48,9 @@ func newInfluxDBOutNode(et *ExecutingTask, n *pipeline.InfluxDBOutNode, l *log.L
 }
 
 func (i *InfluxDBOutNode) runOut([]byte) error {
+
+	ins := NewLegacyEdges(i.ins)
+
 	i.pointsWritten = &expvar.Int{}
 	i.writeErrors = &expvar.Int{}
 
@@ -85,7 +88,7 @@ func (i *InfluxDBOutNode) runOut([]byte) error {
 
 	switch i.Wants() {
 	case pipeline.StreamEdge:
-		for p, ok := i.ins[0].NextPoint(); ok; p, ok = i.ins[0].NextPoint() {
+		for p, ok := ins[0].NextPoint(); ok; p, ok = ins[0].NextPoint() {
 			i.timer.Start()
 			batch := models.Batch{
 				Name:   p.Name,
@@ -101,7 +104,7 @@ func (i *InfluxDBOutNode) runOut([]byte) error {
 			i.timer.Stop()
 		}
 	case pipeline.BatchEdge:
-		for b, ok := i.ins[0].NextBatch(); ok; b, ok = i.ins[0].NextBatch() {
+		for b, ok := ins[0].NextBatch(); ok; b, ok = ins[0].NextBatch() {
 			i.timer.Start()
 			err := i.write("", "", b)
 			if err != nil {

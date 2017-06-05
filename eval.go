@@ -69,6 +69,10 @@ func newEvalNode(et *ExecutingTask, n *pipeline.EvalNode, l *log.Logger) (*EvalN
 }
 
 func (e *EvalNode) runEval(snapshot []byte) error {
+
+	ins := NewLegacyEdges(e.ins)
+	outs := NewLegacyEdges(e.outs)
+
 	valueF := func() int64 {
 		e.expressionsByGroupMu.RLock()
 		l := len(e.expressionsByGroup)
@@ -80,7 +84,7 @@ func (e *EvalNode) runEval(snapshot []byte) error {
 	switch e.Provides() {
 	case pipeline.StreamEdge:
 		var err error
-		for p, ok := e.ins[0].NextPoint(); ok; p, ok = e.ins[0].NextPoint() {
+		for p, ok := ins[0].NextPoint(); ok; p, ok = ins[0].NextPoint() {
 			e.timer.Start()
 			p.Fields, p.Tags, err = e.eval(p.Time, p.Group, p.Fields, p.Tags)
 			if err != nil {
@@ -93,7 +97,7 @@ func (e *EvalNode) runEval(snapshot []byte) error {
 				continue
 			}
 			e.timer.Stop()
-			for _, child := range e.outs {
+			for _, child := range outs {
 				err := child.CollectPoint(p)
 				if err != nil {
 					return err
@@ -102,7 +106,7 @@ func (e *EvalNode) runEval(snapshot []byte) error {
 		}
 	case pipeline.BatchEdge:
 		var err error
-		for b, ok := e.ins[0].NextBatch(); ok; b, ok = e.ins[0].NextBatch() {
+		for b, ok := ins[0].NextBatch(); ok; b, ok = ins[0].NextBatch() {
 			e.timer.Start()
 			b.Points = b.ShallowCopyPoints()
 			for i := 0; i < len(b.Points); {
@@ -120,7 +124,7 @@ func (e *EvalNode) runEval(snapshot []byte) error {
 				}
 			}
 			e.timer.Stop()
-			for _, child := range e.outs {
+			for _, child := range outs {
 				err := child.CollectBatch(b)
 				if err != nil {
 					return err

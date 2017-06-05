@@ -54,8 +54,11 @@ func (c *GroupedConsumer) EndBatch(end EndBatchMessage) error {
 func (c *GroupedConsumer) Barrier(b BarrierMessage) error {
 	// Barriers messages apply to all gorups
 	for _, r := range c.groups {
-		r.Barrier(b)
+		if err := r.Barrier(b); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
 type GroupedReceiver interface {

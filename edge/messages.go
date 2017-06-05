@@ -24,12 +24,19 @@ type PointMessage models.Point
 func (pm PointMessage) Type() MessageType {
 	return Point
 }
+func (pm PointMessage) GroupInfo() GroupInfo {
+	return GroupInfo{
+		Group: pm.Group,
+		Tags:  pm.Tags,
+		Dims:  pm.Dimensions,
+	}
+}
 
 type BeginBatchMessage struct {
-	Name   string
-	Group  models.GroupID
-	Tags   models.Tags
-	ByName bool
+	Name       string
+	Group      models.GroupID
+	Tags       models.Tags
+	Dimensions models.Dimensions
 	// If non-zero expect a batch with SizeHint points,
 	// otherwise an unknown number of points are coming.
 	SizeHint int
@@ -37,6 +44,14 @@ type BeginBatchMessage struct {
 
 func (bb BeginBatchMessage) Type() MessageType {
 	return BeginBatch
+}
+
+func (bb BeginBatchMessage) GroupInfo() GroupInfo {
+	return GroupInfo{
+		Group: bb.Group,
+		Tags:  bb.Tags,
+		Dims:  bb.Dimensions,
+	}
 }
 
 // EndBatchMessage indicates that all points for a batch have arrived.
