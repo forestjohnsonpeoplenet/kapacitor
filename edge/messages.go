@@ -1,6 +1,7 @@
 package edge
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/influxdata/kapacitor/models"
@@ -14,6 +15,21 @@ const (
 	Point
 	Barrier
 )
+
+func (m MessageType) String() string {
+	switch m {
+	case BeginBatch:
+		return "begin_batch"
+	case Point:
+		return "point"
+	case EndBatch:
+		return "end_batch"
+	case Barrier:
+		return "barrier"
+	default:
+		return fmt.Sprintf("unknown message type %d", int(m))
+	}
+}
 
 type Message interface {
 	Type() MessageType

@@ -122,7 +122,7 @@ func (e *LegacyEdge) Abort() {
 }
 
 func (e *LegacyEdge) Next() (p models.PointInterface, ok bool) {
-	if e.typ != pipeline.StreamEdge {
+	if e.typ == pipeline.StreamEdge {
 		return e.NextPoint()
 	}
 	return e.NextBatch()
@@ -157,6 +157,7 @@ func (e *LegacyEdge) NextBatch() (models.Batch, bool) {
 		b.Tags = begin.Tags
 		b.ByName = begin.Dimensions.ByName
 		b.Points = make([]models.BatchPoint, 0, begin.SizeHint)
+		break
 	}
 	finished := false
 	for m, ok := e.e.Next(); ok; m, ok = e.e.Next() {

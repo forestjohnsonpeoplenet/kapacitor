@@ -53,22 +53,6 @@ func (e *statsEdge) EmittedVar() expvar.Var {
 	return e.emitted
 }
 
-func (e *statsEdge) Collect(m Message) error {
-	if err := e.edge.Collect(m); err != nil {
-		return err
-	}
-	e.collected.Add(1)
-	return nil
-}
-
-func (e *statsEdge) Next() (m Message, ok bool) {
-	m, ok = e.edge.Next()
-	if ok {
-		e.emitted.Add(1)
-	}
-	return
-}
-
 func (e *statsEdge) Close() error {
 	return e.edge.Close()
 }
@@ -137,7 +121,7 @@ func NewBatchStatsEdge(e Edge) *BatchStatsEdge {
 }
 
 func (e *BatchStatsEdge) Collect(m Message) error {
-	if err := e.statsEdge.Collect(m); err != nil {
+	if err := e.edge.Collect(m); err != nil {
 		return err
 	}
 	switch m.Type() {
@@ -148,9 +132,18 @@ func (e *BatchStatsEdge) Collect(m Message) error {
 	case Point:
 		e.size++
 	case EndBatch:
+		e.collected.Add(1)
 		e.incCollected(e.currentGroup, e.size)
 	}
 	return nil
+}
+
+func (e *BatchStatsEdge) Next() (m Message, ok bool) {
+	m, ok = e.edge.Next()
+	if ok && m.Type() == EndBatch {
+		e.emitted.Add(1)
+	}
+	return
 }
 
 type StreamStatsEdge struct {
@@ -169,11 +162,20 @@ func NewStreamStatsEdge(e Edge) *StreamStatsEdge {
 }
 
 func (e *StreamStatsEdge) Collect(m Message) error {
-	if err := e.statsEdge.Collect(m); err != nil {
+	if err := e.edge.Collect(m); err != nil {
 		return err
 	}
 	if m.Type() == Point {
+		e.collected.Add(1)
 		e.incCollected(m.(PointMessage).GroupInfo(), 1)
 	}
 	return nil
+}
+
+func (e *StreamStatsEdge) Next() (m Message, ok bool) {
+	m, ok = e.edge.Next()
+	if ok && m.Type() == Point {
+		e.emitted.Add(1)
+	}
+	return
 }
