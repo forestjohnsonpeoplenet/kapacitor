@@ -140,7 +140,8 @@ type QueryNode struct {
 	pointsQueried  *expvar.Int
 	byName         bool
 
-	legacyIns []*LegacyEdge
+	legacyIns  []*LegacyEdge
+	legacyOuts []*LegacyEdge
 }
 
 func newQueryNode(et *ExecutingTask, n *pipeline.QueryNode, l *log.Logger) (*QueryNode, error) {
@@ -222,6 +223,7 @@ func (b *QueryNode) Start() {
 	b.queryMu.Lock()
 	defer b.queryMu.Unlock()
 	b.legacyIns = NewLegacyEdges(b.ins)
+	b.legacyOuts = NewLegacyEdges(b.outs)
 	b.queryErr = make(chan error, 1)
 	go func() {
 		b.queryErr <- b.doQuery()
@@ -341,8 +343,8 @@ func (b *QueryNode) doQuery() error {
 }
 
 func (b *QueryNode) runBatch([]byte) error {
-	ins := NewLegacyEdges(b.ins)
-	outs := NewLegacyEdges(b.outs)
+	b.legacyIns = NewLegacyEdges(b.ins)
+	b.legacyOuts = NewLegacyEdges(b.outs)
 
 	errC := make(chan error, 1)
 	go func() {
@@ -352,8 +354,8 @@ func (b *QueryNode) runBatch([]byte) error {
 				errC <- fmt.Errorf("%v", err)
 			}
 		}()
-		for bt, ok := ins[0].NextBatch(); ok; bt, ok = ins[0].NextBatch() {
-			for _, child := range outs {
+		for bt, ok := b.legacyIns[0].NextBatch(); ok; bt, ok = b.legacyIns[0].NextBatch() {
+			for _, child := range b.legacyOuts {
 				err := child.CollectBatch(bt)
 				if err != nil {
 					errC <- err
