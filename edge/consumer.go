@@ -23,12 +23,12 @@ func (ec *Consumer) Run() error {
 			if err := ec.r.BeginBatch(begin); err != nil {
 				return err
 			}
-		case Point:
-			p, ok := msg.(PointMessage)
+		case BatchPoint:
+			bp, ok := msg.(BatchPointMessage)
 			if !ok {
 				return ErrImpossibleType{Expected: typ, Actual: msg}
 			}
-			if err := ec.r.Point(p); err != nil {
+			if err := ec.r.BatchPoint(bp); err != nil {
 				return err
 			}
 		case EndBatch:
@@ -37,6 +37,14 @@ func (ec *Consumer) Run() error {
 				return ErrImpossibleType{Expected: typ, Actual: msg}
 			}
 			if err := ec.r.EndBatch(end); err != nil {
+				return err
+			}
+		case Point:
+			p, ok := msg.(PointMessage)
+			if !ok {
+				return ErrImpossibleType{Expected: typ, Actual: msg}
+			}
+			if err := ec.r.Point(p); err != nil {
 				return err
 			}
 		case Barrier:
@@ -54,7 +62,8 @@ func (ec *Consumer) Run() error {
 
 type Receiver interface {
 	BeginBatch(begin BeginBatchMessage) error
-	Point(p PointMessage) error
+	BatchPoint(bp BatchPointMessage) error
 	EndBatch(end EndBatchMessage) error
+	Point(p PointMessage) error
 	Barrier(b BarrierMessage) error
 }

@@ -1,6 +1,10 @@
 package edge
 
-import "github.com/influxdata/kapacitor/models"
+import (
+	"errors"
+
+	"github.com/influxdata/kapacitor/models"
+)
 
 type GroupedConsumer struct {
 	consumer *Consumer
@@ -37,18 +41,22 @@ func (c *GroupedConsumer) BeginBatch(begin BeginBatchMessage) error {
 	return r.BeginBatch(begin)
 }
 
-func (c *GroupedConsumer) Point(p PointMessage) error {
-	if c.current != nil {
-		return c.current.Point(p)
+func (c *GroupedConsumer) BatchPoint(p BatchPointMessage) error {
+	if c.current == nil {
+		return errors.New("received batch point without batch")
 	}
-	r := c.getOrCreateGroup(p.Group)
-	return r.Point(p)
+	return c.current.BatchPoint(p)
 }
 
 func (c *GroupedConsumer) EndBatch(end EndBatchMessage) error {
 	err := c.current.EndBatch(end)
 	c.current = nil
 	return err
+}
+
+func (c *GroupedConsumer) Point(p PointMessage) error {
+	r := c.getOrCreateGroup(p.Group)
+	return r.Point(p)
 }
 
 func (c *GroupedConsumer) Barrier(b BarrierMessage) error {

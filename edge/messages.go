@@ -13,6 +13,7 @@ const (
 	BeginBatch MessageType = iota
 	EndBatch
 	Point
+	BatchPoint
 	Barrier
 )
 
@@ -20,10 +21,12 @@ func (m MessageType) String() string {
 	switch m {
 	case BeginBatch:
 		return "begin_batch"
-	case Point:
-		return "point"
+	case BatchPoint:
+		return "batch_point"
 	case EndBatch:
 		return "end_batch"
+	case Point:
+		return "point"
 	case Barrier:
 		return "barrier"
 	default:
@@ -40,6 +43,7 @@ type PointMessage models.Point
 func (pm PointMessage) Type() MessageType {
 	return Point
 }
+
 func (pm PointMessage) GroupInfo() GroupInfo {
 	return GroupInfo{
 		Group: pm.Group,
@@ -68,6 +72,12 @@ func (bb BeginBatchMessage) GroupInfo() GroupInfo {
 		Tags:  bb.Tags,
 		Dims:  bb.Dimensions,
 	}
+}
+
+type BatchPointMessage models.BatchPoint
+
+func (BatchPointMessage) Type() MessageType {
+	return BatchPoint
 }
 
 // EndBatchMessage indicates that all points for a batch have arrived.

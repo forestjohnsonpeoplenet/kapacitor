@@ -160,24 +160,25 @@ func (e *LegacyEdge) NextBatch() (models.Batch, bool) {
 		break
 	}
 	finished := false
+MESSAGES:
 	for m, ok := e.e.Next(); ok; m, ok = e.e.Next() {
-		t := m.Type()
-		if t == edge.EndBatch {
+		switch t := m.Type(); t {
+		case edge.EndBatch:
 			end := m.(edge.EndBatchMessage)
 			b.TMax = end.TMax
 			finished = true
-			break
-		}
-		if t := m.Type(); t != edge.Point {
+			break MESSAGES
+		case edge.BatchPoint:
+			bp := m.(edge.BatchPointMessage)
+			b.Points = append(b.Points, models.BatchPoint{
+				Time:   bp.Time,
+				Fields: bp.Fields,
+				Tags:   bp.Tags,
+			})
+		default:
 			e.logger.Printf("E! legacy edge does not support edge message of type %v", t)
-			continue
+			continue MESSAGES
 		}
-		p := m.(edge.PointMessage)
-		b.Points = append(b.Points, models.BatchPoint{
-			Time:   p.Time,
-			Fields: p.Fields,
-			Tags:   p.Tags,
-		})
 	}
 	return b, finished
 }
@@ -187,7 +188,8 @@ func (e *LegacyEdge) CollectPoint(p models.Point) error {
 }
 
 func (e *LegacyEdge) CollectBatch(b models.Batch) error {
-	if err := e.e.Collect(edge.BeginBatchMessage{Name: b.Name,
+	if err := e.e.Collect(edge.BeginBatchMessage{
+		Name:       b.Name,
 		Group:      b.Group,
 		Tags:       b.Tags,
 		Dimensions: b.PointDimensions(),
@@ -196,7 +198,7 @@ func (e *LegacyEdge) CollectBatch(b models.Batch) error {
 		return err
 	}
 	for _, bp := range b.Points {
-		if err := e.e.Collect(edge.PointMessage{
+		if err := e.e.Collect(edge.BatchPointMessage{
 			Time:   bp.Time,
 			Fields: bp.Fields,
 			Tags:   bp.Tags,
