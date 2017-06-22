@@ -82,6 +82,11 @@ func (e *Edge) Close() error {
 type LegacyEdge struct {
 	e edge.Edge
 
+	// collect serializes all calls to collect messages.
+	collect sync.Mutex
+	// next serializes all calls to get next messages.
+	next sync.Mutex
+
 	logger *log.Logger
 }
 
@@ -126,9 +131,11 @@ func (e *LegacyEdge) Next() (p models.PointInterface, ok bool) {
 }
 
 func (e *LegacyEdge) NextPoint() (models.Point, bool) {
+	e.next.Lock()
+	defer e.next.Unlock()
 	for m, ok := e.e.Next(); ok; m, ok = e.e.Next() {
 		if t := m.Type(); t != edge.Point {
-			e.logger.Printf("E! legacy edge does not support edge message of type %v", t)
+			e.logger.Printf("E! legacy edge expected message of type edge.PointMessage, got message of type %v", t)
 			continue
 		}
 		p, ok := m.(edge.PointMessage)
@@ -142,10 +149,12 @@ func (e *LegacyEdge) NextPoint() (models.Point, bool) {
 }
 
 func (e *LegacyEdge) NextBatch() (models.Batch, bool) {
+	e.next.Lock()
+	defer e.next.Unlock()
 	b := models.Batch{}
 	for m, ok := e.e.Next(); ok; m, ok = e.e.Next() {
 		if t := m.Type(); t != edge.BeginBatch {
-			e.logger.Printf("E! legacy edge does not support edge message of type %v", t)
+			e.logger.Printf("E! legacy edge expected message of type edge.BatchBeginMessage, got message of type %v", t)
 			continue
 		}
 		begin := m.(edge.BeginBatchMessage)
@@ -173,7 +182,7 @@ MESSAGES:
 				Tags:   bp.Tags,
 			})
 		default:
-			e.logger.Printf("E! legacy edge does not support edge message of type %v", t)
+			e.logger.Printf("E! legacy edge expected message of type edge.EndBatchMessage or edge.BatchPointMessage, got message of type %v", t)
 			continue MESSAGES
 		}
 	}
@@ -181,10 +190,14 @@ MESSAGES:
 }
 
 func (e *LegacyEdge) CollectPoint(p models.Point) error {
+	e.collect.Lock()
+	defer e.collect.Unlock()
 	return e.e.Collect((edge.PointMessage)(p))
 }
 
 func (e *LegacyEdge) CollectBatch(b models.Batch) error {
+	e.collect.Lock()
+	defer e.collect.Unlock()
 	if err := e.e.Collect(edge.BeginBatchMessage{
 		Name:       b.Name,
 		Group:      b.Group,
