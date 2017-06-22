@@ -139,9 +139,6 @@ type QueryNode struct {
 	batchesQueried *expvar.Int
 	pointsQueried  *expvar.Int
 	byName         bool
-
-	legacyIns  []*LegacyEdge
-	legacyOuts []*LegacyEdge
 }
 
 func newQueryNode(et *ExecutingTask, n *pipeline.QueryNode, l *log.Logger) (*QueryNode, error) {
@@ -222,11 +219,10 @@ func (b *QueryNode) DBRPs() ([]DBRP, error) {
 func (b *QueryNode) Start() {
 	b.queryMu.Lock()
 	defer b.queryMu.Unlock()
-	b.legacyIns = NewLegacyEdges(b.ins)
-	b.legacyOuts = NewLegacyEdges(b.outs)
+	legacyIns := NewLegacyEdges(b.ins)
 	b.queryErr = make(chan error, 1)
 	go func() {
-		b.queryErr <- b.doQuery()
+		b.queryErr <- b.doQuery(legacyIns[0])
 	}()
 }
 
@@ -269,8 +265,8 @@ func (b *QueryNode) Queries(start, stop time.Time) ([]*Query, error) {
 }
 
 // Query InfluxDB and collect batches on batch collector.
-func (b *QueryNode) doQuery() error {
-	defer b.legacyIns[0].Close()
+func (b *QueryNode) doQuery(legacyIn *LegacyEdge) error {
+	defer legacyIn.Close()
 	b.batchesQueried = &expvar.Int{}
 	b.pointsQueried = &expvar.Int{}
 
@@ -330,7 +326,7 @@ func (b *QueryNode) doQuery() error {
 					b.batchesQueried.Add(1)
 					b.pointsQueried.Add(int64(len(bch.Points)))
 					b.timer.Pause()
-					err := b.legacyIns[0].CollectBatch(bch)
+					err := legacyIn.CollectBatch(bch)
 					if err != nil {
 						return err
 					}
@@ -343,8 +339,8 @@ func (b *QueryNode) doQuery() error {
 }
 
 func (b *QueryNode) runBatch([]byte) error {
-	b.legacyIns = NewLegacyEdges(b.ins)
-	b.legacyOuts = NewLegacyEdges(b.outs)
+	legacyIns := NewLegacyEdges(b.ins)
+	legacyOuts := NewLegacyEdges(b.outs)
 
 	errC := make(chan error, 1)
 	go func() {
@@ -354,8 +350,8 @@ func (b *QueryNode) runBatch([]byte) error {
 				errC <- fmt.Errorf("%v", err)
 			}
 		}()
-		for bt, ok := b.legacyIns[0].NextBatch(); ok; bt, ok = b.legacyIns[0].NextBatch() {
-			for _, child := range b.legacyOuts {
+		for bt, ok := legacyIns[0].NextBatch(); ok; bt, ok = legacyIns[0].NextBatch() {
+			for _, child := range legacyOuts {
 				err := child.CollectBatch(bt)
 				if err != nil {
 					errC <- err
