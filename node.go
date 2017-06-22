@@ -79,8 +79,8 @@ type node struct {
 	err        error
 	finishedMu sync.Mutex
 	finished   bool
-	ins        []*Edge
-	outs       []*Edge
+	ins        []edge.StatsEdge
+	outs       []edge.StatsEdge
 	logger     *log.Logger
 	timer      timer.Timer
 	statsKey   string

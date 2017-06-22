@@ -2,6 +2,7 @@ package edge
 
 import (
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/influxdata/kapacitor/models"
@@ -52,6 +53,11 @@ func (pm PointMessage) GroupInfo() GroupInfo {
 	}
 }
 
+func (pm *PointMessage) UpdateGroup() {
+	sort.Strings(pm.Dimensions.TagNames)
+	pm.Group = models.ToGroupID(pm.Name, pm.Tags, pm.Dimensions)
+}
+
 type BeginBatchMessage struct {
 	Name       string
 	Group      models.GroupID
@@ -72,6 +78,10 @@ func (bb BeginBatchMessage) GroupInfo() GroupInfo {
 		Tags:  bb.Tags,
 		Dims:  bb.Dimensions,
 	}
+}
+
+func (bb *BeginBatchMessage) UpdateGroup() {
+	bb.Group = models.ToGroupID(bb.Name, bb.Tags, bb.Dimensions)
 }
 
 type BatchPointMessage models.BatchPoint

@@ -45,14 +45,10 @@ func newDeleteNode(et *ExecutingTask, n *pipeline.DeleteNode, l *log.Logger) (*D
 func (n *DeleteNode) runDelete(snapshot []byte) error {
 	n.statMap.Set(statsFieldsDeleted, n.fieldsDeleted)
 	n.statMap.Set(statsTagsDeleted, n.tagsDeleted)
-	outs := make([]edge.Edge, len(n.outs))
-	for i, out := range n.outs {
-		outs[i] = out
-	}
 	consumer := edge.NewConsumer(
 		n.ins[0],
-		edge.NewForwardingReceiver(
-			outs,
+		edge.NewForwardingReceiverFromStats(
+			n.outs,
 			edge.NewTimedForwardingReceiver(n.timer, n),
 		),
 	)
@@ -61,12 +57,17 @@ func (n *DeleteNode) runDelete(snapshot []byte) error {
 
 func (n *DeleteNode) BeginBatch(begin edge.BeginBatchMessage) (edge.Message, error) {
 	_, begin.Tags = n.doDeletes(nil, begin.Tags)
+	begin.UpdateGroup()
 	return begin, nil
 }
 
 func (n *DeleteNode) BatchPoint(bp edge.BatchPointMessage) (edge.Message, error) {
 	bp.Fields, bp.Tags = n.doDeletes(bp.Fields, bp.Tags)
 	return bp, nil
+}
+
+func (n *DeleteNode) EndBatch(end edge.EndBatchMessage) (edge.Message, error) {
+	return end, nil
 }
 
 func (n *DeleteNode) Point(p edge.PointMessage) (edge.Message, error) {
@@ -90,10 +91,6 @@ func (n *DeleteNode) Point(p edge.PointMessage) (edge.Message, error) {
 		p.Group = models.ToGroupID(p.Name, p.Tags, p.Dimensions)
 	}
 	return p, nil
-}
-
-func (n *DeleteNode) EndBatch(end edge.EndBatchMessage) (edge.Message, error) {
-	return end, nil
 }
 
 func (n *DeleteNode) Barrier(b edge.BarrierMessage) (edge.Message, error) {

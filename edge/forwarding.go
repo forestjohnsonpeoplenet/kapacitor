@@ -17,6 +17,13 @@ type ForwardingReceiver struct {
 	r    ForwardReceiver
 }
 
+func NewForwardingReceiverFromStats(outs []StatsEdge, r ForwardReceiver) *ForwardingReceiver {
+	os := make([]Edge, len(outs))
+	for i := range outs {
+		os[i] = outs[i]
+	}
+	return NewForwardingReceiver(os, r)
+}
 func NewForwardingReceiver(outs []Edge, r ForwardReceiver) *ForwardingReceiver {
 	return &ForwardingReceiver{
 		outs: outs,

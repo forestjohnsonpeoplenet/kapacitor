@@ -3,6 +3,7 @@ package kapacitor
 import (
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"sync"
 
@@ -38,21 +39,13 @@ type Edge struct {
 	mu     sync.Mutex
 	closed bool
 
-	typ pipeline.EdgeType
-
 	statsKey string
 	statMap  *expvar.Map
 	logger   *log.Logger
 }
 
 func newEdge(taskName, parentName, childName string, t pipeline.EdgeType, size int, logService LogService) *Edge {
-	var e edge.StatsEdge
-	switch t {
-	case pipeline.StreamEdge:
-		e = edge.NewStreamStatsEdge(edge.NewChannelEdge(defaultEdgeBufferSize))
-	case pipeline.BatchEdge:
-		e = edge.NewBatchStatsEdge(edge.NewChannelEdge(defaultEdgeBufferSize))
-	}
+	e := edge.NewStatsEdge(edge.NewChannelEdge(t, defaultEdgeBufferSize))
 	tags := map[string]string{
 		"task":   taskName,
 		"parent": parentName,
@@ -67,7 +60,6 @@ func newEdge(taskName, parentName, childName string, t pipeline.EdgeType, size i
 		StatsEdge: e,
 		statsKey:  key,
 		statMap:   sm,
-		typ:       t,
 		logger:    logService.NewLogger(fmt.Sprintf("[edge:%s] ", name), log.LstdFlags),
 	}
 }
@@ -90,20 +82,25 @@ func (e *Edge) Close() error {
 type LegacyEdge struct {
 	e edge.Edge
 
-	typ pipeline.EdgeType
-
 	logger *log.Logger
 }
 
-func NewLegacyEdge(e *Edge) *LegacyEdge {
+func NewLegacyEdge(e edge.Edge) *LegacyEdge {
+	var logger *log.Logger
+	if el, ok := e.(*Edge); ok {
+		logger = el.logger
+	} else {
+		// This should not be a possible branch,
+		// as all edges passed to NewLegacyEdge are expected to be *Edge.
+		logger = log.New(ioutil.Discard, "", 0)
+	}
 	return &LegacyEdge{
 		e:      e,
-		typ:    e.typ,
-		logger: e.logger,
+		logger: logger,
 	}
 }
 
-func NewLegacyEdges(edges []*Edge) []*LegacyEdge {
+func NewLegacyEdges(edges []edge.StatsEdge) []*LegacyEdge {
 	legacyEdges := make([]*LegacyEdge, len(edges))
 	for i := range edges {
 		legacyEdges[i] = NewLegacyEdge(edges[i])
@@ -122,7 +119,7 @@ func (e *LegacyEdge) Abort() {
 }
 
 func (e *LegacyEdge) Next() (p models.PointInterface, ok bool) {
-	if e.typ == pipeline.StreamEdge {
+	if e.e.Type() == pipeline.StreamEdge {
 		return e.NextPoint()
 	}
 	return e.NextBatch()

@@ -6,6 +6,7 @@ import (
 
 	kexpvar "github.com/influxdata/kapacitor/expvar"
 	"github.com/influxdata/kapacitor/models"
+	"github.com/influxdata/kapacitor/pipeline"
 )
 
 type GroupInfo struct {
@@ -102,6 +103,16 @@ func (e *statsEdge) incEmitted(info GroupInfo, count int64) {
 	e.mu.Unlock()
 }
 
+func NewStatsEdge(e Edge) StatsEdge {
+	switch e.Type() {
+	case pipeline.StreamEdge:
+		return NewStreamStatsEdge(e)
+	case pipeline.BatchEdge:
+		return NewBatchStatsEdge(e)
+	}
+	return nil
+}
+
 type BatchStatsEdge struct {
 	statsEdge
 
@@ -146,6 +157,10 @@ func (e *BatchStatsEdge) Next() (m Message, ok bool) {
 	return
 }
 
+func (e *BatchStatsEdge) Type() pipeline.EdgeType {
+	return e.edge.Type()
+}
+
 type StreamStatsEdge struct {
 	statsEdge
 }
@@ -178,4 +193,8 @@ func (e *StreamStatsEdge) Next() (m Message, ok bool) {
 		e.emitted.Add(1)
 	}
 	return
+}
+
+func (e *StreamStatsEdge) Type() pipeline.EdgeType {
+	return e.edge.Type()
 }

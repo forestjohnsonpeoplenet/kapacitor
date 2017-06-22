@@ -3,6 +3,8 @@ package edge
 import (
 	"errors"
 	"sync"
+
+	"github.com/influxdata/kapacitor/pipeline"
 )
 
 // Edge represents the connection between two nodes that communicate via messages.
@@ -18,6 +20,9 @@ type Edge interface {
 	Close() error
 	// Abort immediately stops the edge and all currently buffered messages are dropped.
 	Abort()
+	// Type indicates whether the edge will emit stream or batch data.
+	// TODO: Need to not use the pipeline.EdgeType here.
+	Type() pipeline.EdgeType
 }
 
 type edgeState int
@@ -33,16 +38,19 @@ type channelEdge struct {
 	aborting chan struct{}
 	messages chan Message
 
+	typ pipeline.EdgeType
+
 	mu    sync.Mutex
 	state edgeState
 }
 
 // NewChannelEdge returns a new edge that uses channels as the underlying transport.
-func NewChannelEdge(size int) Edge {
+func NewChannelEdge(typ pipeline.EdgeType, size int) Edge {
 	return &channelEdge{
 		aborting: make(chan struct{}),
 		messages: make(chan Message, size),
 		state:    edgeOpen,
+		typ:      typ,
 	}
 }
 
@@ -83,4 +91,8 @@ func (e *channelEdge) Abort() {
 	}
 	close(e.aborting)
 	e.state = edgeAborted
+}
+
+func (e *channelEdge) Type() pipeline.EdgeType {
+	return e.typ
 }
