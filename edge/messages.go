@@ -12,9 +12,10 @@ type MessageType int
 
 const (
 	BeginBatch MessageType = iota
-	EndBatch
-	Point
 	BatchPoint
+	EndBatch
+	BufferedBatch
+	Point
 	Barrier
 )
 
@@ -26,6 +27,8 @@ func (m MessageType) String() string {
 		return "batch_point"
 	case EndBatch:
 		return "end_batch"
+	case BufferedBatch:
+		return "buffered_batch"
 	case Point:
 		return "point"
 	case Barrier:
@@ -97,6 +100,16 @@ type EndBatchMessage struct {
 
 func (eb EndBatchMessage) Type() MessageType {
 	return EndBatch
+}
+
+type BufferedBatchMessage struct {
+	Begin  BeginBatchMessage
+	Points []BatchPointMessage
+	End    EndBatchMessage
+}
+
+func (bb BufferedBatchMessage) Type() MessageType {
+	return BufferedBatch
 }
 
 // BarrierMessage indicates that no data older than the barrier time will arrive.

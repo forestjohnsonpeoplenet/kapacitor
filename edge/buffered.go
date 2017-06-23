@@ -1,13 +1,9 @@
 package edge
 
-type BufferedBatch struct {
-	Begin  BeginBatchMessage
-	Points []BatchPointMessage
-	End    EndBatchMessage
-}
-
 type BufferedReceiver interface {
-	Batch(batch BufferedBatch) error
+	// Batch processes an entire buffered batch.
+	// Do not modify the batch or the slice of Points as it could be shared.
+	Batch(batch BufferedBatchMessage) error
 	Point(p PointMessage) error
 	Barrier(b BarrierMessage) error
 }
@@ -20,7 +16,7 @@ func NewBufferingReceiver(r BufferedReceiver) Receiver {
 
 type bufferingReceiver struct {
 	r      BufferedReceiver
-	buffer BufferedBatch
+	buffer BufferedBatchMessage
 }
 
 func (r *bufferingReceiver) BeginBatch(begin BeginBatchMessage) error {
@@ -45,21 +41,4 @@ func (r *bufferingReceiver) Point(p PointMessage) error {
 
 func (r *bufferingReceiver) Barrier(b BarrierMessage) error {
 	return r.r.Barrier(b)
-}
-
-func CollectBufferedBatch(e Edge, batch BufferedBatch) error {
-	// Update SizeHint now that we know the final size.
-	batch.Begin.SizeHint = len(batch.Points)
-	if err := e.Collect(batch.Begin); err != nil {
-		return err
-	}
-	for _, bp := range batch.Points {
-		if err := e.Collect(bp); err != nil {
-			return err
-		}
-	}
-	if err := e.Collect(batch.End); err != nil {
-		return err
-	}
-	return nil
 }

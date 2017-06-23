@@ -133,7 +133,7 @@ func (e *LegacyEdge) Next() (p models.PointInterface, ok bool) {
 func (e *LegacyEdge) NextPoint() (models.Point, bool) {
 	e.next.Lock()
 	defer e.next.Unlock()
-	for m, ok := e.e.Next(); ok; m, ok = e.e.Next() {
+	for m, ok := e.e.Emit(); ok; m, ok = e.e.Emit() {
 		if t := m.Type(); t != edge.Point {
 			e.logger.Printf("E! legacy edge expected message of type edge.PointMessage, got message of type %v", t)
 			continue
@@ -152,22 +152,50 @@ func (e *LegacyEdge) NextBatch() (models.Batch, bool) {
 	e.next.Lock()
 	defer e.next.Unlock()
 	b := models.Batch{}
-	for m, ok := e.e.Next(); ok; m, ok = e.e.Next() {
-		if t := m.Type(); t != edge.BeginBatch {
+
+BEGIN:
+	for m, ok := e.e.Emit(); ok; m, ok = e.e.Emit() {
+		switch t := m.Type(); t {
+		case edge.BeginBatch:
+			begin, ok := m.(edge.BeginBatchMessage)
+			if !ok {
+				e.logger.Printf("E! legacy edge expected message of type edge.BeginBatchMessage, got message of type %v", t)
+				continue BEGIN
+			}
+			b.Name = begin.Name
+			b.Group = begin.Group
+			b.Tags = begin.Tags
+			b.ByName = begin.Dimensions.ByName
+			b.Points = make([]models.BatchPoint, 0, begin.SizeHint)
+			break BEGIN
+		case edge.BufferedBatch:
+			batch, ok := m.(edge.BufferedBatchMessage)
+			if !ok {
+				e.logger.Printf("E! legacy edge expected message of type edge.BufferedBatchMessage, got message of type %v", t)
+				continue BEGIN
+			}
+			b.Name = batch.Begin.Name
+			b.Group = batch.Begin.Group
+			b.Tags = batch.Begin.Tags
+			b.ByName = batch.Begin.Dimensions.ByName
+			b.TMax = batch.End.TMax
+			b.Points = make([]models.BatchPoint, len(batch.Points))
+			for i, bp := range batch.Points {
+				b.Points[i] = models.BatchPoint{
+					Time:   bp.Time,
+					Fields: bp.Fields,
+					Tags:   bp.Tags,
+				}
+			}
+			return b, true
+		default:
 			e.logger.Printf("E! legacy edge expected message of type edge.BatchBeginMessage, got message of type %v", t)
-			continue
+			continue BEGIN
 		}
-		begin := m.(edge.BeginBatchMessage)
-		b.Name = begin.Name
-		b.Group = begin.Group
-		b.Tags = begin.Tags
-		b.ByName = begin.Dimensions.ByName
-		b.Points = make([]models.BatchPoint, 0, begin.SizeHint)
-		break
 	}
 	finished := false
 MESSAGES:
-	for m, ok := e.e.Next(); ok; m, ok = e.e.Next() {
+	for m, ok := e.e.Emit(); ok; m, ok = e.e.Emit() {
 		switch t := m.Type(); t {
 		case edge.EndBatch:
 			end := m.(edge.EndBatchMessage)

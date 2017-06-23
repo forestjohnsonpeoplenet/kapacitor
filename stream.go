@@ -26,7 +26,7 @@ func newStreamNode(et *ExecutingTask, n *pipeline.StreamNode, l *log.Logger) (*S
 }
 
 func (s *StreamNode) runSourceStream([]byte) error {
-	for m, ok := s.ins[0].Next(); ok; m, ok = s.ins[0].Next() {
+	for m, ok := s.ins[0].Emit(); ok; m, ok = s.ins[0].Emit() {
 		for _, child := range s.outs {
 			err := child.Collect(m)
 			if err != nil {

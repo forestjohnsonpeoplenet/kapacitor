@@ -13,8 +13,8 @@ import (
 type Edge interface {
 	// Collect instructs the edge to accept a new message.
 	Collect(Message) error
-	// Next blocks until a message is available and returns it or returns false if the edge has been closed or aborted.
-	Next() (Message, bool)
+	// Emit blocks until a message is available and returns it or returns false if the edge has been closed or aborted.
+	Emit() (Message, bool)
 	// Close stops the edge, all messages currently buffered will be processed.
 	// Future calls to Collect will panic.
 	Close() error
@@ -63,7 +63,7 @@ func (e *channelEdge) Collect(m Message) error {
 	}
 }
 
-func (e *channelEdge) Next() (m Message, ok bool) {
+func (e *channelEdge) Emit() (m Message, ok bool) {
 	select {
 	case m, ok = <-e.messages:
 	case <-e.aborting:

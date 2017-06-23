@@ -23,8 +23,8 @@ func (e *logEdge) Collect(m Message) error {
 	return e.e.Collect(m)
 }
 
-func (e *logEdge) Next() (m Message, ok bool) {
-	m, ok = e.e.Next()
+func (e *logEdge) Emit() (m Message, ok bool) {
+	m, ok = e.e.Emit()
 	if ok {
 		e.logger.Println("D! next:", m.Type())
 	}

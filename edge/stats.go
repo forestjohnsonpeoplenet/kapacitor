@@ -149,8 +149,8 @@ func (e *BatchStatsEdge) Collect(m Message) error {
 	return nil
 }
 
-func (e *BatchStatsEdge) Next() (m Message, ok bool) {
-	m, ok = e.edge.Next()
+func (e *BatchStatsEdge) Emit() (m Message, ok bool) {
+	m, ok = e.edge.Emit()
 	if ok && m.Type() == EndBatch {
 		e.emitted.Add(1)
 	}
@@ -187,8 +187,8 @@ func (e *StreamStatsEdge) Collect(m Message) error {
 	return nil
 }
 
-func (e *StreamStatsEdge) Next() (m Message, ok bool) {
-	m, ok = e.edge.Next()
+func (e *StreamStatsEdge) Emit() (m Message, ok bool) {
+	m, ok = e.edge.Emit()
 	if ok && m.Type() == Point {
 		e.emitted.Add(1)
 	}

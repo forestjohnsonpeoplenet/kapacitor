@@ -23,7 +23,7 @@ type GroupByNode struct {
 
 	mu       sync.RWMutex
 	lastTime time.Time
-	groups   map[models.GroupID]*edge.BufferedBatch
+	groups   map[models.GroupID]*edge.BufferedBatchMessage
 }
 
 // Create a new GroupByNode which splits the stream dynamically based on the specified dimensions.
@@ -31,7 +31,7 @@ func newGroupByNode(et *ExecutingTask, n *pipeline.GroupByNode, l *log.Logger) (
 	gn := &GroupByNode{
 		node:   node{Node: n, et: et, logger: l},
 		g:      n,
-		groups: make(map[models.GroupID]*edge.BufferedBatch),
+		groups: make(map[models.GroupID]*edge.BufferedBatchMessage),
 	}
 	gn.node.runF = gn.runGroupBy
 
@@ -52,7 +52,7 @@ func (g *GroupByNode) runGroupBy([]byte) error {
 	}
 	g.statMap.Set(statCardinalityGauge, expvar.NewIntFuncGauge(valueF))
 
-	consumer := edge.NewConsumer(
+	consumer := edge.NewConsumerWithReceiver(
 		g.ins[0],
 		edge.NewBufferingReceiver(g),
 	)
@@ -71,7 +71,7 @@ func (g *GroupByNode) Point(p edge.PointMessage) error {
 	return nil
 }
 
-func (g *GroupByNode) Batch(batch edge.BufferedBatch) error {
+func (g *GroupByNode) Batch(batch edge.BufferedBatchMessage) error {
 	g.timer.Start()
 	defer g.timer.Stop()
 
@@ -97,7 +97,7 @@ func (g *GroupByNode) Batch(batch edge.BufferedBatch) error {
 			newBegin.Tags = tags
 
 			// Create buffer for group batch
-			group = &edge.BufferedBatch{
+			group = &edge.BufferedBatchMessage{
 				Begin:  newBegin,
 				Points: make([]edge.BatchPointMessage, 0, batch.Begin.SizeHint),
 				End:    batch.End,
@@ -125,10 +125,12 @@ func (g *GroupByNode) emit(t time.Time) error {
 		g.lastTime = t
 		// Emit all groups
 		for id, group := range g.groups {
+			// Update SizeHint since we know the final point count
+			group.Begin.SizeHint = len(group.Points)
 			// Send group batch to all children
 			g.timer.Pause()
 			for _, child := range g.outs {
-				if err := edge.CollectBufferedBatch(child, *group); err != nil {
+				if err := child.Collect(*group); err != nil {
 					return err
 				}
 			}

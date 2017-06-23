@@ -38,7 +38,7 @@ func (e *DefaultNode) runDefault(snapshot []byte) error {
 	e.statMap.Set(statsFieldsDefaulted, e.fieldsDefaulted)
 	e.statMap.Set(statsTagsDefaulted, e.tagsDefaulted)
 
-	consumer := edge.NewConsumer(
+	consumer := edge.NewConsumerWithReceiver(
 		e.ins[0],
 		edge.NewForwardingReceiverFromStats(
 			e.outs,

@@ -45,7 +45,7 @@ func newDeleteNode(et *ExecutingTask, n *pipeline.DeleteNode, l *log.Logger) (*D
 func (n *DeleteNode) runDelete(snapshot []byte) error {
 	n.statMap.Set(statsFieldsDeleted, n.fieldsDeleted)
 	n.statMap.Set(statsTagsDeleted, n.tagsDeleted)
-	consumer := edge.NewConsumer(
+	consumer := edge.NewConsumerWithReceiver(
 		n.ins[0],
 		edge.NewForwardingReceiverFromStats(
 			n.outs,

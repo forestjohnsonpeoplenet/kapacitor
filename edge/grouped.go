@@ -18,7 +18,7 @@ func NewGroupedConsumer(edge Edge, gr GroupedReceiver) *GroupedConsumer {
 		gr:     gr,
 		groups: make(map[models.GroupID]Receiver),
 	}
-	gc.consumer = NewConsumer(edge, gc)
+	gc.consumer = NewConsumerWithReceiver(edge, gc)
 	return gc
 }
 
