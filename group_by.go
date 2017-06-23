@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/influxdata/kapacitor/edge"
 	"github.com/influxdata/kapacitor/expvar"
 	"github.com/influxdata/kapacitor/models"
 	"github.com/influxdata/kapacitor/pipeline"
@@ -17,7 +18,12 @@ type GroupByNode struct {
 	g             *pipeline.GroupByNode
 	dimensions    []string
 	allDimensions bool
-	byName        bool
+
+	dims models.Dimensions
+
+	mu       sync.RWMutex
+	lastTime time.Time
+	groups   map[models.GroupID]*edge.BufferedBatch
 }
 
 // Create a new GroupByNode which splits the stream dynamically based on the specified dimensions.
@@ -25,99 +31,112 @@ func newGroupByNode(et *ExecutingTask, n *pipeline.GroupByNode, l *log.Logger) (
 	gn := &GroupByNode{
 		node:   node{Node: n, et: et, logger: l},
 		g:      n,
-		byName: n.ByMeasurementFlag,
+		groups: make(map[models.GroupID]*edge.BufferedBatch),
 	}
 	gn.node.runF = gn.runGroupBy
 
 	gn.allDimensions, gn.dimensions = determineDimensions(n.Dimensions)
+	gn.dims = models.Dimensions{
+		ByName:   n.ByMeasurementFlag,
+		TagNames: gn.dimensions,
+	}
 	return gn, nil
 }
 
 func (g *GroupByNode) runGroupBy([]byte) error {
-
-	ins := NewLegacyEdges(g.ins)
-	outs := NewLegacyEdges(g.outs)
-
-	dims := models.Dimensions{
-		ByName: g.g.ByMeasurementFlag,
+	valueF := func() int64 {
+		g.mu.RLock()
+		l := len(g.groups)
+		g.mu.RUnlock()
+		return int64(l)
 	}
-	switch g.Wants() {
-	case pipeline.StreamEdge:
-		dims.TagNames = g.dimensions
-		for pt, ok := ins[0].NextPoint(); ok; pt, ok = ins[0].NextPoint() {
-			g.timer.Start()
-			pt = setGroupOnPoint(pt, g.allDimensions, dims, g.g.ExcludedDimensions)
-			g.timer.Stop()
-			for _, child := range outs {
-				err := child.CollectPoint(pt)
-				if err != nil {
+	g.statMap.Set(statCardinalityGauge, expvar.NewIntFuncGauge(valueF))
+
+	consumer := edge.NewConsumer(
+		g.ins[0],
+		edge.NewBufferingReceiver(g),
+	)
+	return consumer.Run()
+}
+
+func (g *GroupByNode) Point(p edge.PointMessage) error {
+	g.timer.Start()
+	p = edge.PointMessage(setGroupOnPoint(models.Point(p), g.allDimensions, g.dims, g.g.ExcludedDimensions))
+	g.timer.Stop()
+	for _, out := range g.outs {
+		if err := out.Collect(p); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (g *GroupByNode) Batch(batch edge.BufferedBatch) error {
+	g.timer.Start()
+	defer g.timer.Stop()
+
+	g.emit(batch.End.TMax)
+
+	for _, bp := range batch.Points {
+		if g.allDimensions {
+			g.dims.TagNames = filterExcludedDimensions(bp.Tags, g.dims, g.g.ExcludedDimensions)
+		} else {
+			g.dims.TagNames = g.dimensions
+		}
+		groupID := models.ToGroupID(batch.Begin.Name, bp.Tags, g.dims)
+		group, ok := g.groups[groupID]
+		if !ok {
+			// Create new begin message
+			newBegin := batch.Begin
+			newBegin.Group = groupID
+			// Create new tags
+			tags := make(map[string]string, len(g.dims.TagNames))
+			for _, dim := range g.dims.TagNames {
+				tags[dim] = bp.Tags[dim]
+			}
+			newBegin.Tags = tags
+
+			// Create buffer for group batch
+			group = &edge.BufferedBatch{
+				Begin:  newBegin,
+				Points: make([]edge.BatchPointMessage, 0, batch.Begin.SizeHint),
+				End:    batch.End,
+			}
+			g.mu.Lock()
+			g.groups[groupID] = group
+			g.mu.Unlock()
+		}
+		group.Points = append(group.Points, bp)
+	}
+	return nil
+}
+
+func (g *GroupByNode) Barrier(b edge.BarrierMessage) error {
+	g.timer.Start()
+	err := g.emit(b.Time)
+	g.timer.Stop()
+	return err
+}
+
+// emit sends all groups before time t to children nodes.
+// The node timer must be started when calling this method.
+func (g *GroupByNode) emit(t time.Time) error {
+	if !t.Equal(g.lastTime) {
+		g.lastTime = t
+		// Emit all groups
+		for id, group := range g.groups {
+			// Send group batch to all children
+			g.timer.Pause()
+			for _, child := range g.outs {
+				if err := edge.CollectBufferedBatch(child, *group); err != nil {
 					return err
 				}
 			}
-		}
-	default:
-		var mu sync.RWMutex
-		var lastTime time.Time
-		groups := make(map[models.GroupID]*models.Batch)
-		valueF := func() int64 {
-			mu.RLock()
-			l := len(groups)
-			mu.RUnlock()
-			return int64(l)
-		}
-		g.statMap.Set(statCardinalityGauge, expvar.NewIntFuncGauge(valueF))
-
-		for b, ok := ins[0].NextBatch(); ok; b, ok = ins[0].NextBatch() {
-			g.timer.Start()
-			if !b.TMax.Equal(lastTime) {
-				lastTime = b.TMax
-				// Emit all groups
-				mu.RLock()
-				for id, group := range groups {
-					for _, child := range outs {
-						err := child.CollectBatch(*group)
-						if err != nil {
-							return err
-						}
-					}
-					mu.RUnlock()
-					mu.Lock()
-					// Remove from groups
-					delete(groups, id)
-					mu.Unlock()
-					mu.RLock()
-				}
-				mu.RUnlock()
-			}
-			for _, p := range b.Points {
-				if g.allDimensions {
-					dims.TagNames = filterExcludedDimensions(p.Tags, dims, g.g.ExcludedDimensions)
-				} else {
-					dims.TagNames = g.dimensions
-				}
-				groupID := models.ToGroupID(b.Name, p.Tags, dims)
-				mu.RLock()
-				group, ok := groups[groupID]
-				mu.RUnlock()
-				if !ok {
-					tags := make(map[string]string, len(dims.TagNames))
-					for _, dim := range dims.TagNames {
-						tags[dim] = p.Tags[dim]
-					}
-					group = &models.Batch{
-						Name:   b.Name,
-						Group:  groupID,
-						TMax:   b.TMax,
-						ByName: b.ByName,
-						Tags:   tags,
-					}
-					mu.Lock()
-					groups[groupID] = group
-					mu.Unlock()
-				}
-				group.Points = append(group.Points, p)
-			}
-			g.timer.Stop()
+			g.timer.Resume()
+			g.mu.Lock()
+			// Remove from group
+			delete(g.groups, id)
+			g.mu.Unlock()
 		}
 	}
 	return nil

@@ -2701,6 +2701,7 @@ stream
 		.every(5s)
 	|groupBy(*)
 		.exclude('host')
+	|log()
 	|count('value')
 	|httpOut('TestStream_BatchGroupBy')
 `
