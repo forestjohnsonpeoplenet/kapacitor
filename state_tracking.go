@@ -3,10 +3,9 @@ package kapacitor
 import (
 	"fmt"
 	"log"
-	"sync"
 	"time"
 
-	"github.com/influxdata/kapacitor/expvar"
+	"github.com/influxdata/kapacitor/edge"
 	"github.com/influxdata/kapacitor/models"
 	"github.com/influxdata/kapacitor/pipeline"
 	"github.com/influxdata/kapacitor/tick/ast"
@@ -14,11 +13,12 @@ import (
 )
 
 type stateTracker interface {
-	track(p models.BatchPoint, inState bool) interface{}
+	track(t time.Time, inState bool) interface{}
 	reset()
 }
 
 type stateTrackingGroup struct {
+	stn *StateTrackingNode
 	stateful.Expression
 	stateful.ScopePool
 	tracker stateTracker
@@ -30,119 +30,81 @@ type StateTrackingNode struct {
 	as     string
 
 	newTracker func() stateTracker
-
-	groupsMu sync.RWMutex
-	groups   map[models.GroupID]*stateTrackingGroup
-}
-
-func (stn *StateTrackingNode) group(g models.GroupID) (*stateTrackingGroup, error) {
-	stn.groupsMu.RLock()
-	stg := stn.groups[g]
-	stn.groupsMu.RUnlock()
-
-	if stg == nil {
-		// Grab the write lock
-		stn.groupsMu.Lock()
-		defer stn.groupsMu.Unlock()
-
-		// Check again now that we have the write lock
-		stg = stn.groups[g]
-		if stg == nil {
-			// Create a new tracking group
-			stg = &stateTrackingGroup{}
-
-			var err error
-			stg.Expression, err = stateful.NewExpression(stn.lambda.Expression)
-			if err != nil {
-				return nil, fmt.Errorf("Failed to compile expression: %v", err)
-			}
-
-			stg.ScopePool = stateful.NewScopePool(ast.FindReferenceVariables(stn.lambda.Expression))
-
-			stg.tracker = stn.newTracker()
-
-			stn.groups[g] = stg
-		}
-	}
-	return stg, nil
 }
 
 func (stn *StateTrackingNode) runStateTracking(_ []byte) error {
-	ins := NewLegacyEdges(stn.ins)
-	outs := NewLegacyEdges(stn.outs)
-	// Setup working_cardinality gauage.
-	valueF := func() int64 {
-		stn.groupsMu.RLock()
-		l := len(stn.groups)
-		stn.groupsMu.RUnlock()
-		return int64(l)
+	consumer := edge.NewGroupedConsumer(
+		stn.ins[0],
+		stn,
+	)
+	stn.statMap.Set(statCardinalityGauge, consumer.Cardinality)
+	return consumer.Run()
+}
+
+func (stn *StateTrackingNode) NewGroup(group models.GroupID) edge.Receiver {
+	return edge.NewForwardingReceiverFromStats(
+		stn.outs,
+		edge.NewTimedForwardingReceiver(stn.timer, stn.newGroup()),
+	)
+}
+
+func (stn *StateTrackingNode) newGroup() *stateTrackingGroup {
+	// Create a new tracking group
+	g := &stateTrackingGroup{
+		stn: stn,
 	}
-	stn.statMap.Set(statCardinalityGauge, expvar.NewIntFuncGauge(valueF))
 
-	switch stn.Provides() {
-	case pipeline.StreamEdge:
-		for p, ok := ins[0].NextPoint(); ok; p, ok = ins[0].NextPoint() {
-			stn.timer.Start()
-			stg, err := stn.group(p.Group)
-			if err != nil {
-				return err
-			}
+	// Error is explicitly check already
+	g.Expression, _ = stateful.NewExpression(stn.lambda.Expression)
+	g.ScopePool = stateful.NewScopePool(ast.FindReferenceVariables(stn.lambda.Expression))
 
-			pass, err := EvalPredicate(stg.Expression, stg.ScopePool, p.Time, p.Fields, p.Tags)
-			if err != nil {
-				stn.incrementErrorCount()
-				stn.logger.Println("E! error while evaluating expression:", err)
-				stn.timer.Stop()
-				continue
-			}
+	g.tracker = stn.newTracker()
+	return g
+}
 
-			p.Fields = p.Fields.Copy()
-			p.Fields[stn.as] = stg.tracker.track(models.BatchPointFromPoint(p), pass)
+func (stn *StateTrackingNode) DeleteGroup(group models.GroupID) {
+	// Nothing to do
+}
 
-			stn.timer.Stop()
-			for _, child := range outs {
-				err := child.CollectPoint(p)
-				if err != nil {
-					return err
-				}
-			}
-		}
-	case pipeline.BatchEdge:
-		for b, ok := ins[0].NextBatch(); ok; b, ok = ins[0].NextBatch() {
-			stn.timer.Start()
+func (g *stateTrackingGroup) BeginBatch(begin edge.BeginBatchMessage) (edge.Message, error) {
+	g.tracker.reset()
+	return begin, nil
+}
 
-			stg, err := stn.group(b.Group)
-			if err != nil {
-				return err
-			}
-			stg.tracker.reset()
-
-			b.Points = b.ShallowCopyPoints()
-			for i := 0; i < len(b.Points); {
-				p := &b.Points[i]
-				pass, err := EvalPredicate(stg.Expression, stg.ScopePool, p.Time, p.Fields, p.Tags)
-				if err != nil {
-					stn.incrementErrorCount()
-					stn.logger.Println("E! error while evaluating epression:", err)
-					b.Points = append(b.Points[:i], b.Points[i+1:]...)
-					continue
-				}
-				i++
-
-				p.Fields = p.Fields.Copy()
-				p.Fields[stn.as] = stg.tracker.track(*p, pass)
-			}
-
-			stn.timer.Stop()
-			for _, child := range outs {
-				err := child.CollectBatch(b)
-				if err != nil {
-					return err
-				}
-			}
-		}
+func (g *stateTrackingGroup) BatchPoint(bp edge.BatchPointMessage) (edge.Message, error) {
+	pass, err := EvalPredicate(g.Expression, g.ScopePool, bp.Time, bp.Fields, bp.Tags)
+	if err != nil {
+		g.stn.incrementErrorCount()
+		g.stn.logger.Println("E! error while evaluating epression:", err)
+		return nil, nil
 	}
-	return nil
+
+	bp.Fields = bp.Fields.Copy()
+	bp.Fields[g.stn.as] = g.tracker.track(bp.Time, pass)
+
+	return bp, nil
+}
+
+func (g *stateTrackingGroup) EndBatch(end edge.EndBatchMessage) (edge.Message, error) {
+	return end, nil
+}
+
+func (g *stateTrackingGroup) Point(p edge.PointMessage) (edge.Message, error) {
+	pass, err := EvalPredicate(g.Expression, g.ScopePool, p.Time, p.Fields, p.Tags)
+	if err != nil {
+		g.stn.incrementErrorCount()
+		g.stn.logger.Println("E! error while evaluating expression:", err)
+		return nil, nil
+	}
+
+	p.Fields = p.Fields.Copy()
+	p.Fields[g.stn.as] = g.tracker.track(p.Time, pass)
+
+	return p, nil
+}
+
+func (g *stateTrackingGroup) Barrier(b edge.BarrierMessage) (edge.Message, error) {
+	return b, nil
 }
 
 type stateDurationTracker struct {
@@ -155,28 +117,30 @@ func (sdt *stateDurationTracker) reset() {
 	sdt.startTime = time.Time{}
 }
 
-func (sdt *stateDurationTracker) track(p models.BatchPoint, inState bool) interface{} {
+func (sdt *stateDurationTracker) track(t time.Time, inState bool) interface{} {
 	if !inState {
 		sdt.startTime = time.Time{}
 		return float64(-1)
 	}
 
 	if sdt.startTime.IsZero() {
-		sdt.startTime = p.Time
+		sdt.startTime = t
 	}
-	return float64(p.Time.Sub(sdt.startTime)) / float64(sdt.sd.Unit)
+	return float64(t.Sub(sdt.startTime)) / float64(sdt.sd.Unit)
 }
 
 func newStateDurationNode(et *ExecutingTask, sd *pipeline.StateDurationNode, l *log.Logger) (*StateTrackingNode, error) {
 	if sd.Lambda == nil {
 		return nil, fmt.Errorf("nil expression passed to StateDurationNode")
 	}
+	// Validate lambda expression
+	if _, err := stateful.NewExpression(sd.Lambda.Expression); err != nil {
+		return nil, err
+	}
 	stn := &StateTrackingNode{
-		node:   node{Node: sd, et: et, logger: l},
-		lambda: sd.Lambda,
-		as:     sd.As,
-
-		groups:     make(map[models.GroupID]*stateTrackingGroup),
+		node:       node{Node: sd, et: et, logger: l},
+		lambda:     sd.Lambda,
+		as:         sd.As,
 		newTracker: func() stateTracker { return &stateDurationTracker{sd: sd} },
 	}
 	stn.node.runF = stn.runStateTracking
@@ -191,7 +155,7 @@ func (sct *stateCountTracker) reset() {
 	sct.count = 0
 }
 
-func (sct *stateCountTracker) track(p models.BatchPoint, inState bool) interface{} {
+func (sct *stateCountTracker) track(t time.Time, inState bool) interface{} {
 	if !inState {
 		sct.count = 0
 		return int64(-1)
@@ -205,12 +169,14 @@ func newStateCountNode(et *ExecutingTask, sc *pipeline.StateCountNode, l *log.Lo
 	if sc.Lambda == nil {
 		return nil, fmt.Errorf("nil expression passed to StateCountNode")
 	}
+	// Validate lambda expression
+	if _, err := stateful.NewExpression(sc.Lambda.Expression); err != nil {
+		return nil, err
+	}
 	stn := &StateTrackingNode{
-		node:   node{Node: sc, et: et, logger: l},
-		lambda: sc.Lambda,
-		as:     sc.As,
-
-		groups:     make(map[models.GroupID]*stateTrackingGroup),
+		node:       node{Node: sc, et: et, logger: l},
+		lambda:     sc.Lambda,
+		as:         sc.As,
 		newTracker: func() stateTracker { return &stateCountTracker{} },
 	}
 	stn.node.runF = stn.runStateTracking

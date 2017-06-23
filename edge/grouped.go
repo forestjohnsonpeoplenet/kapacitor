@@ -3,20 +3,23 @@ package edge
 import (
 	"errors"
 
+	"github.com/influxdata/kapacitor/expvar"
 	"github.com/influxdata/kapacitor/models"
 )
 
 type GroupedConsumer struct {
-	consumer *Consumer
-	gr       GroupedReceiver
-	groups   map[models.GroupID]Receiver
-	current  Receiver
+	consumer    *Consumer
+	gr          GroupedReceiver
+	groups      map[models.GroupID]Receiver
+	current     Receiver
+	Cardinality *expvar.Int
 }
 
 func NewGroupedConsumer(edge Edge, gr GroupedReceiver) *GroupedConsumer {
 	gc := &GroupedConsumer{
-		gr:     gr,
-		groups: make(map[models.GroupID]Receiver),
+		gr:          gr,
+		groups:      make(map[models.GroupID]Receiver),
+		Cardinality: new(expvar.Int),
 	}
 	gc.consumer = NewConsumerWithReceiver(edge, gc)
 	return gc
@@ -29,6 +32,7 @@ func (c *GroupedConsumer) Run() error {
 func (c *GroupedConsumer) getOrCreateGroup(group models.GroupID) Receiver {
 	r, ok := c.groups[group]
 	if !ok {
+		c.Cardinality.Add(1)
 		r = c.gr.NewGroup(group)
 		c.groups[group] = r
 	}
