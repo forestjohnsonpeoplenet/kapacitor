@@ -155,32 +155,22 @@ func (e *LegacyEdge) NextBatch() (models.Batch, bool) {
 
 BEGIN:
 	for m, ok := e.e.Emit(); ok; m, ok = e.e.Emit() {
-		switch t := m.Type(); t {
-		case edge.BeginBatch:
-			begin, ok := m.Value().(edge.BeginBatchMessage)
-			if !ok {
-				e.logger.Printf("E! legacy edge expected message of type edge.BeginBatchMessage, got message of type %v", t)
-				continue BEGIN
-			}
-			b.Name = begin.Name
-			b.Group = begin.Group
-			b.Tags = begin.Tags
-			b.ByName = begin.Dimensions.ByName
-			b.Points = make([]models.BatchPoint, 0, begin.SizeHint)
+		switch msg := m.Value().(type) {
+		case edge.BeginBatchMessage:
+			b.Name = msg.Name
+			b.Group = msg.Group
+			b.Tags = msg.Tags
+			b.ByName = msg.Dimensions.ByName
+			b.Points = make([]models.BatchPoint, 0, msg.SizeHint)
 			break BEGIN
-		case edge.BufferedBatch:
-			batch, ok := m.Value().(edge.BufferedBatchMessage)
-			if !ok {
-				e.logger.Printf("E! legacy edge expected message of type edge.BufferedBatchMessage, got message of type %v", t)
-				continue BEGIN
-			}
-			b.Name = batch.Begin.Name
-			b.Group = batch.Begin.Group
-			b.Tags = batch.Begin.Tags
-			b.ByName = batch.Begin.Dimensions.ByName
-			b.TMax = batch.End.TMax
-			b.Points = make([]models.BatchPoint, len(batch.Points))
-			for i, bp := range batch.Points {
+		case edge.BufferedBatchMessage:
+			b.Name = msg.Begin.Name
+			b.Group = msg.Begin.Group
+			b.Tags = msg.Begin.Tags
+			b.ByName = msg.Begin.Dimensions.ByName
+			b.TMax = msg.End.TMax
+			b.Points = make([]models.BatchPoint, len(msg.Points))
+			for i, bp := range msg.Points {
 				b.Points[i] = models.BatchPoint{
 					Time:   bp.Time,
 					Fields: bp.Fields,
@@ -189,28 +179,26 @@ BEGIN:
 			}
 			return b, true
 		default:
-			e.logger.Printf("E! legacy edge expected message of type edge.BatchBeginMessage, got message of type %v", t)
+			e.logger.Printf("E! legacy edge expected message of type edge.BatchBegin or edge.BufferedBatch, got message of type %v", m.Type())
 			continue BEGIN
 		}
 	}
 	finished := false
 MESSAGES:
 	for m, ok := e.e.Emit(); ok; m, ok = e.e.Emit() {
-		switch t := m.Type(); t {
-		case edge.EndBatch:
-			end := m.Value().(edge.EndBatchMessage)
-			b.TMax = end.TMax
+		switch msg := m.Value().(type) {
+		case edge.EndBatchMessage:
+			b.TMax = msg.TMax
 			finished = true
 			break MESSAGES
-		case edge.BatchPoint:
-			bp := m.Value().(edge.BatchPointMessage)
+		case edge.BatchPointMessage:
 			b.Points = append(b.Points, models.BatchPoint{
-				Time:   bp.Time,
-				Fields: bp.Fields,
-				Tags:   bp.Tags,
+				Time:   msg.Time,
+				Fields: msg.Fields,
+				Tags:   msg.Tags,
 			})
 		default:
-			e.logger.Printf("E! legacy edge expected message of type edge.EndBatchMessage or edge.BatchPointMessage, got message of type %v", t)
+			e.logger.Printf("E! legacy edge expected message of type edge.EndBatch or edge.BatchPoint, got message of type %v", m.Type())
 			continue MESSAGES
 		}
 	}
