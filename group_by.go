@@ -130,7 +130,7 @@ func (g *GroupByNode) emit(t time.Time) error {
 			// Send group batch to all children
 			g.timer.Pause()
 			for _, child := range g.outs {
-				if err := child.Collect(*group); err != nil {
+				if err := child.Collect(group); err != nil {
 					return err
 				}
 			}

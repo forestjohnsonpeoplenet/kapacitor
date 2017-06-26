@@ -1,5 +1,7 @@
 package edge
 
+import "fmt"
+
 type Consumer struct {
 	edge Edge
 	r    Receiver
@@ -22,71 +24,49 @@ func NewConsumerWithBufferedReceiver(edge Edge, buffered BufferedReceiver) *Cons
 
 func (ec *Consumer) Run() error {
 	for msg, ok := ec.edge.Emit(); ok; msg, ok = ec.edge.Emit() {
-		switch typ := msg.Type(); typ {
-		case BeginBatch:
-			begin, ok := msg.(BeginBatchMessage)
-			if !ok {
-				return ErrImpossibleType{Expected: typ, Actual: msg}
-			}
-			if err := ec.r.BeginBatch(begin); err != nil {
+		switch m := msg.Value().(type) {
+		case BeginBatchMessage:
+			if err := ec.r.BeginBatch(m); err != nil {
 				return err
 			}
-		case BatchPoint:
-			bp, ok := msg.(BatchPointMessage)
-			if !ok {
-				return ErrImpossibleType{Expected: typ, Actual: msg}
-			}
-			if err := ec.r.BatchPoint(bp); err != nil {
+		case BatchPointMessage:
+			if err := ec.r.BatchPoint(m); err != nil {
 				return err
 			}
-		case EndBatch:
-			end, ok := msg.(EndBatchMessage)
-			if !ok {
-				return ErrImpossibleType{Expected: typ, Actual: msg}
-			}
-			if err := ec.r.EndBatch(end); err != nil {
+		case EndBatchMessage:
+			if err := ec.r.EndBatch(m); err != nil {
 				return err
 			}
-		case BufferedBatch:
-			batch, ok := msg.(BufferedBatchMessage)
-			if !ok {
-				return ErrImpossibleType{Expected: typ, Actual: msg}
-			}
+		case BufferedBatchMessage:
 			// If we have a buffered receiver pass the batch straight through.
 			if ec.b != nil {
-				if err := ec.b.Batch(batch); err != nil {
+				if err := ec.b.Batch(m); err != nil {
 					return err
 				}
 			} else {
 				// Pass the batch non buffered.
-				if err := ec.r.BeginBatch(batch.Begin); err != nil {
+				if err := ec.r.BeginBatch(m.Begin); err != nil {
 					return err
 				}
-				for _, bp := range batch.Points {
+				for _, bp := range m.Points {
 					if err := ec.r.BatchPoint(bp); err != nil {
 						return err
 					}
 				}
-				if err := ec.r.EndBatch(batch.End); err != nil {
+				if err := ec.r.EndBatch(m.End); err != nil {
 					return err
 				}
 			}
-		case Point:
-			p, ok := msg.(PointMessage)
-			if !ok {
-				return ErrImpossibleType{Expected: typ, Actual: msg}
-			}
-			if err := ec.r.Point(p); err != nil {
+		case PointMessage:
+			if err := ec.r.Point(m); err != nil {
 				return err
 			}
-		case Barrier:
-			b, ok := msg.(BarrierMessage)
-			if !ok {
-				return ErrImpossibleType{Expected: typ, Actual: msg}
-			}
-			if err := ec.r.Barrier(b); err != nil {
+		case BarrierMessage:
+			if err := ec.r.Barrier(m); err != nil {
 				return err
 			}
+		default:
+			return fmt.Errorf("unknown message type %T", msg)
 		}
 	}
 	return nil

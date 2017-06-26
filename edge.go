@@ -138,7 +138,7 @@ func (e *LegacyEdge) NextPoint() (models.Point, bool) {
 			e.logger.Printf("E! legacy edge expected message of type edge.PointMessage, got message of type %v", t)
 			continue
 		}
-		p, ok := m.(edge.PointMessage)
+		p, ok := m.Value().(edge.PointMessage)
 		if !ok {
 			e.logger.Printf("E! unexpected message type %T", m)
 			continue
@@ -157,7 +157,7 @@ BEGIN:
 	for m, ok := e.e.Emit(); ok; m, ok = e.e.Emit() {
 		switch t := m.Type(); t {
 		case edge.BeginBatch:
-			begin, ok := m.(edge.BeginBatchMessage)
+			begin, ok := m.Value().(edge.BeginBatchMessage)
 			if !ok {
 				e.logger.Printf("E! legacy edge expected message of type edge.BeginBatchMessage, got message of type %v", t)
 				continue BEGIN
@@ -169,7 +169,7 @@ BEGIN:
 			b.Points = make([]models.BatchPoint, 0, begin.SizeHint)
 			break BEGIN
 		case edge.BufferedBatch:
-			batch, ok := m.(edge.BufferedBatchMessage)
+			batch, ok := m.Value().(edge.BufferedBatchMessage)
 			if !ok {
 				e.logger.Printf("E! legacy edge expected message of type edge.BufferedBatchMessage, got message of type %v", t)
 				continue BEGIN
@@ -198,12 +198,12 @@ MESSAGES:
 	for m, ok := e.e.Emit(); ok; m, ok = e.e.Emit() {
 		switch t := m.Type(); t {
 		case edge.EndBatch:
-			end := m.(edge.EndBatchMessage)
+			end := m.Value().(edge.EndBatchMessage)
 			b.TMax = end.TMax
 			finished = true
 			break MESSAGES
 		case edge.BatchPoint:
-			bp := m.(edge.BatchPointMessage)
+			bp := m.Value().(edge.BatchPointMessage)
 			b.Points = append(b.Points, models.BatchPoint{
 				Time:   bp.Time,
 				Fields: bp.Fields,
