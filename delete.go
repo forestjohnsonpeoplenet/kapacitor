@@ -47,12 +47,12 @@ func (n *DeleteNode) runDelete(snapshot []byte) error {
 	n.statMap.Set(statsTagsDeleted, n.tagsDeleted)
 	consumer := edge.NewConsumerWithReceiver(
 		n.ins[0],
-		edge.NewForwardingReceiverFromStats(
+		edge.NewReceiverFromForwardReceiverWithStats(
 			n.outs,
-			edge.NewTimedForwardingReceiver(n.timer, n),
+			edge.NewTimedForwardReceiver(n.timer, n),
 		),
 	)
-	return consumer.Run()
+	return consumer.Consume()
 }
 
 func (n *DeleteNode) BeginBatch(begin edge.BeginBatchMessage) (edge.Message, error) {

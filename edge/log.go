@@ -1,3 +1,5 @@
+// +build debug
+
 package edge
 
 import (
@@ -11,6 +13,11 @@ type logEdge struct {
 	logger *log.Logger
 }
 
+// NewLogEdge creates an edge that logs the type of all collected and emitted messages.
+//
+// This edge should only be used during debug sessions and not in production code.
+// As such by default build tags exclude this file from being compiled.
+// Add the `-tags debug` arguments to build or test commands in order to include this file for compilation.
 func NewLogEdge(l *log.Logger, e Edge) Edge {
 	return &logEdge{
 		e:      e,

@@ -1,9 +1,7 @@
 package edge
 
-import (
-	"github.com/influxdata/kapacitor/timer"
-)
-
+// ForwardReceiver handles messages as they arrive and can return a message to be forwarded to output edges.
+// If a returned messages is nil, no message is forwarded.
 type ForwardReceiver interface {
 	BeginBatch(begin BeginBatchMessage) (Message, error)
 	BatchPoint(bp BatchPointMessage) (Message, error)
@@ -12,42 +10,45 @@ type ForwardReceiver interface {
 	Barrier(b BarrierMessage) (Message, error)
 }
 
-type ForwardingReceiver struct {
-	outs []Edge
-	r    ForwardReceiver
-}
-
-func NewForwardingReceiverFromStats(outs []StatsEdge, r ForwardReceiver) *ForwardingReceiver {
+// NewReceiverFromForwardReceiverWithStats creates a new receiver from the provided list of stats edges and forward receiver.
+func NewReceiverFromForwardReceiverWithStats(outs []StatsEdge, r ForwardReceiver) Receiver {
 	os := make([]Edge, len(outs))
 	for i := range outs {
 		os[i] = outs[i]
 	}
-	return NewForwardingReceiver(os, r)
+	return NewReceiverFromForwardReceiver(os, r)
 }
-func NewForwardingReceiver(outs []Edge, r ForwardReceiver) *ForwardingReceiver {
-	return &ForwardingReceiver{
+
+// NewReceiverFromForwardReceiver creates a new receiver from the provided list of edges and forward receiver.
+func NewReceiverFromForwardReceiver(outs []Edge, r ForwardReceiver) Receiver {
+	return &forwardingReceiver{
 		outs: outs,
 		r:    r,
 	}
 }
 
-func (fr *ForwardingReceiver) BeginBatch(begin BeginBatchMessage) error {
+type forwardingReceiver struct {
+	outs []Edge
+	r    ForwardReceiver
+}
+
+func (fr *forwardingReceiver) BeginBatch(begin BeginBatchMessage) error {
 	return fr.forward(fr.r.BeginBatch(begin))
 }
-func (fr *ForwardingReceiver) BatchPoint(bp BatchPointMessage) error {
+func (fr *forwardingReceiver) BatchPoint(bp BatchPointMessage) error {
 	return fr.forward(fr.r.BatchPoint(bp))
 }
-func (fr *ForwardingReceiver) EndBatch(end EndBatchMessage) error {
+func (fr *forwardingReceiver) EndBatch(end EndBatchMessage) error {
 	return fr.forward(fr.r.EndBatch(end))
 }
-func (fr *ForwardingReceiver) Point(p PointMessage) error {
+func (fr *forwardingReceiver) Point(p PointMessage) error {
 	return fr.forward(fr.r.Point(p))
 }
-func (fr *ForwardingReceiver) Barrier(b BarrierMessage) error {
+func (fr *forwardingReceiver) Barrier(b BarrierMessage) error {
 	return fr.forward(fr.r.Barrier(b))
 }
 
-func (fr *ForwardingReceiver) forward(msg Message, err error) error {
+func (fr *forwardingReceiver) forward(msg Message, err error) error {
 	if err != nil {
 		return err
 	}
@@ -59,51 +60,4 @@ func (fr *ForwardingReceiver) forward(msg Message, err error) error {
 		}
 	}
 	return nil
-}
-
-type TimedForwardingReceiver struct {
-	timer timer.Timer
-	r     ForwardReceiver
-}
-
-func NewTimedForwardingReceiver(t timer.Timer, r ForwardReceiver) *TimedForwardingReceiver {
-	return &TimedForwardingReceiver{
-		timer: t,
-		r:     r,
-	}
-}
-
-func (tr *TimedForwardingReceiver) BeginBatch(begin BeginBatchMessage) (m Message, err error) {
-	tr.timer.Start()
-	m, err = tr.r.BeginBatch(begin)
-	tr.timer.Stop()
-	return
-}
-
-func (tr *TimedForwardingReceiver) BatchPoint(bp BatchPointMessage) (m Message, err error) {
-	tr.timer.Start()
-	m, err = tr.r.BatchPoint(bp)
-	tr.timer.Stop()
-	return
-}
-
-func (tr *TimedForwardingReceiver) EndBatch(end EndBatchMessage) (m Message, err error) {
-	tr.timer.Start()
-	m, err = tr.r.EndBatch(end)
-	tr.timer.Stop()
-	return
-}
-
-func (tr *TimedForwardingReceiver) Point(p PointMessage) (m Message, err error) {
-	tr.timer.Start()
-	m, err = tr.r.Point(p)
-	tr.timer.Stop()
-	return
-}
-
-func (tr *TimedForwardingReceiver) Barrier(b BarrierMessage) (m Message, err error) {
-	tr.timer.Start()
-	m, err = tr.r.Barrier(b)
-	tr.timer.Stop()
-	return
 }

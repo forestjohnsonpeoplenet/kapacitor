@@ -54,9 +54,9 @@ func (g *GroupByNode) runGroupBy([]byte) error {
 
 	consumer := edge.NewConsumerWithReceiver(
 		g.ins[0],
-		edge.NewBufferingReceiver(g),
+		edge.NewReceiverFromBufferedReceiver(g),
 	)
-	return consumer.Run()
+	return consumer.Consume()
 }
 
 func (g *GroupByNode) Point(p edge.PointMessage) error {

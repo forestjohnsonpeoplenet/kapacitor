@@ -2,18 +2,20 @@ package edge
 
 type BufferedReceiver interface {
 	// Batch processes an entire buffered batch.
-	// Do not modify the batch or the slice of Points as it could be shared.
+	// Do not modify the batch or the slice of Points as it is shared.
 	Batch(batch BufferedBatchMessage) error
 	Point(p PointMessage) error
 	Barrier(b BarrierMessage) error
 }
 
-func NewBufferingReceiver(r BufferedReceiver) Receiver {
+// NewReceiverFromBufferedReceiver creates a new receiver from r.
+func NewReceiverFromBufferedReceiver(r BufferedReceiver) Receiver {
 	return &bufferingReceiver{
 		r: r,
 	}
 }
 
+// bufferingReceiver implements the Receiver interface and buffers messages to invoke a BufferedReceiver.
 type bufferingReceiver struct {
 	r      BufferedReceiver
 	buffer BufferedBatchMessage

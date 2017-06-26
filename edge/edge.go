@@ -9,7 +9,7 @@ import (
 
 // Edge represents the connection between two nodes that communicate via messages.
 // Edge communication is unidirectional and asynchronous.
-// It is safe for concurrent use.
+// Edges are safe for concurrent use.
 type Edge interface {
 	// Collect instructs the edge to accept a new message.
 	Collect(Message) error
@@ -19,6 +19,7 @@ type Edge interface {
 	// Future calls to Collect will panic.
 	Close() error
 	// Abort immediately stops the edge and all currently buffered messages are dropped.
+	// Future calls to Collect return the error ErrAborted.
 	Abort()
 	// Type indicates whether the edge will emit stream or batch data.
 	// TODO: Need to not use the pipeline.EdgeType here.

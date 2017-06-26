@@ -2,27 +2,37 @@ package edge
 
 import "fmt"
 
-type Consumer struct {
+// Consumer reads messages off an edge and passes them to a receiver.
+type Consumer interface {
+	// Consume reads messages off an edge until the edge is closed or aborted.
+	// An error is returned if either the edge or receiver errors.
+	Consume() error
+}
+
+type consumer struct {
 	edge Edge
 	r    Receiver
 	b    BufferedReceiver
 }
 
-func NewConsumerWithReceiver(edge Edge, r Receiver) *Consumer {
-	return &Consumer{
-		edge: edge,
+// NewConsumerWithReceiver creates a new consumer for the edge e and receiver r.
+func NewConsumerWithReceiver(e Edge, r Receiver) Consumer {
+	return &consumer{
+		edge: e,
 		r:    r,
 	}
 }
-func NewConsumerWithBufferedReceiver(edge Edge, buffered BufferedReceiver) *Consumer {
-	return &Consumer{
-		edge: edge,
-		r:    NewBufferingReceiver(buffered),
-		b:    buffered,
+
+// NewConsumerWithReceiver creates a new consumer for the edge e and buffered receiver b.
+func NewConsumerWithBufferedReceiver(e Edge, b BufferedReceiver) Consumer {
+	return &consumer{
+		edge: e,
+		r:    NewReceiverFromBufferedReceiver(b),
+		b:    b,
 	}
 }
 
-func (ec *Consumer) Run() error {
+func (ec *consumer) Consume() error {
 	for msg, ok := ec.edge.Emit(); ok; msg, ok = ec.edge.Emit() {
 		switch m := msg.Value().(type) {
 		case BeginBatchMessage:
@@ -66,7 +76,7 @@ func (ec *Consumer) Run() error {
 				return err
 			}
 		default:
-			return fmt.Errorf("unknown message type %T", msg)
+			return fmt.Errorf("unexpected message of type %T", msg)
 		}
 	}
 	return nil

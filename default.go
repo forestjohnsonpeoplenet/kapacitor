@@ -40,12 +40,12 @@ func (e *DefaultNode) runDefault(snapshot []byte) error {
 
 	consumer := edge.NewConsumerWithReceiver(
 		e.ins[0],
-		edge.NewForwardingReceiverFromStats(
+		edge.NewReceiverFromForwardReceiverWithStats(
 			e.outs,
-			edge.NewTimedForwardingReceiver(e.timer, e),
+			edge.NewTimedForwardReceiver(e.timer, e),
 		),
 	)
-	return consumer.Run()
+	return consumer.Consume()
 }
 
 func (e *DefaultNode) BeginBatch(begin edge.BeginBatchMessage) (edge.Message, error) {

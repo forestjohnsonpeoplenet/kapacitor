@@ -1,40 +1,72 @@
 package edge
 
 import (
-	"expvar"
 	"sync"
 
-	kexpvar "github.com/influxdata/kapacitor/expvar"
+	expvar "github.com/influxdata/kapacitor/expvar"
 	"github.com/influxdata/kapacitor/models"
 	"github.com/influxdata/kapacitor/pipeline"
 )
 
+// StatsEdge is an edge that tracks various statistics about message passing through the edge.
+type StatsEdge interface {
+	Edge
+	// Collected returns the number of messages collected by this edge.
+	Collected() int64
+	// Emitted returns the number of messages emitted by this edge.
+	Emitted() int64
+	// CollectedVar is an exported var the represents the number of messages collected by this edge.
+	CollectedVar() expvar.IntVar
+	// EmittedVar is an exported var the represents the number of messages emitted by this edge.
+	EmittedVar() expvar.IntVar
+	// ReadGroupStats allows for the reading of the current statistics by group.
+	ReadGroupStats(func(*GroupStats))
+}
+
+// GroupInfo identifies and contians information about a specific group.
 type GroupInfo struct {
 	Group models.GroupID
 	Tags  models.Tags
 	Dims  models.Dimensions
 }
 
+//  GroupStats represents the statistics for a specific group.
 type GroupStats struct {
+	GroupInfo GroupInfo
 	Collected int64
 	Emitted   int64
-	GroupInfo GroupInfo
 }
 
-type StatsEdge interface {
-	Edge
-	Collected() int64
-	Emitted() int64
-	CollectedVar() expvar.Var
-	EmittedVar() expvar.Var
-	ReadGroupStats(func(*GroupStats))
+// NewStatsEdge creates an edge that tracks statistics about the message passing through the edge.
+func NewStatsEdge(e Edge) StatsEdge {
+	switch e.Type() {
+	case pipeline.StreamEdge:
+		return &streamStatsEdge{
+			statsEdge: statsEdge{
+				edge:       e,
+				groupStats: make(map[models.GroupID]*GroupStats),
+				collected:  new(expvar.Int),
+				emitted:    new(expvar.Int),
+			},
+		}
+	case pipeline.BatchEdge:
+		return &batchStatsEdge{
+			statsEdge: statsEdge{
+				edge:       e,
+				groupStats: make(map[models.GroupID]*GroupStats),
+				collected:  new(expvar.Int),
+				emitted:    new(expvar.Int),
+			},
+		}
+	}
+	return nil
 }
 
 type statsEdge struct {
 	edge Edge
 
-	collected *kexpvar.Int
-	emitted   *kexpvar.Int
+	collected *expvar.Int
+	emitted   *expvar.Int
 
 	mu         sync.RWMutex
 	groupStats map[models.GroupID]*GroupStats
@@ -47,10 +79,10 @@ func (e *statsEdge) Emitted() int64 {
 	return e.emitted.IntValue()
 }
 
-func (e *statsEdge) CollectedVar() expvar.Var {
+func (e *statsEdge) CollectedVar() expvar.IntVar {
 	return e.collected
 }
-func (e *statsEdge) EmittedVar() expvar.Var {
+func (e *statsEdge) EmittedVar() expvar.IntVar {
 	return e.emitted
 }
 
@@ -103,53 +135,38 @@ func (e *statsEdge) incEmitted(info GroupInfo, count int64) {
 	e.mu.Unlock()
 }
 
-func NewStatsEdge(e Edge) StatsEdge {
-	switch e.Type() {
-	case pipeline.StreamEdge:
-		return NewStreamStatsEdge(e)
-	case pipeline.BatchEdge:
-		return NewBatchStatsEdge(e)
-	}
-	return nil
-}
-
-type BatchStatsEdge struct {
+type batchStatsEdge struct {
 	statsEdge
 
 	currentGroup GroupInfo
 	size         int64
 }
 
-func NewBatchStatsEdge(e Edge) *BatchStatsEdge {
-	return &BatchStatsEdge{
-		statsEdge: statsEdge{
-			edge:       e,
-			groupStats: make(map[models.GroupID]*GroupStats),
-			collected:  new(kexpvar.Int),
-			emitted:    new(kexpvar.Int),
-		},
-	}
-}
-
-func (e *BatchStatsEdge) Collect(m Message) error {
+func (e *batchStatsEdge) Collect(m Message) error {
 	if err := e.edge.Collect(m); err != nil {
 		return err
 	}
-	switch m.Type() {
-	case BeginBatch:
-		g := m.(BeginBatchMessage).GroupInfo()
+	switch b := m.Value().(type) {
+	case BeginBatchMessage:
+		g := b.GroupInfo()
 		e.currentGroup = g
 		e.size = 0
-	case Point:
+	case PointMessage:
 		e.size++
-	case EndBatch:
+	case EndBatchMessage:
 		e.collected.Add(1)
 		e.incCollected(e.currentGroup, e.size)
+	case BufferedBatchMessage:
+		e.collected.Add(1)
+		e.incCollected(b.Begin.GroupInfo(), int64(len(b.Points)))
+	default:
+		// Do not count other messages
+		// TODO(nathanielc): How should we count other messages?
 	}
 	return nil
 }
 
-func (e *BatchStatsEdge) Emit() (m Message, ok bool) {
+func (e *batchStatsEdge) Emit() (m Message, ok bool) {
 	m, ok = e.edge.Emit()
 	if ok && m.Type() == EndBatch {
 		e.emitted.Add(1)
@@ -157,37 +174,26 @@ func (e *BatchStatsEdge) Emit() (m Message, ok bool) {
 	return
 }
 
-func (e *BatchStatsEdge) Type() pipeline.EdgeType {
+func (e *batchStatsEdge) Type() pipeline.EdgeType {
 	return e.edge.Type()
 }
 
-type StreamStatsEdge struct {
+type streamStatsEdge struct {
 	statsEdge
 }
 
-func NewStreamStatsEdge(e Edge) *StreamStatsEdge {
-	return &StreamStatsEdge{
-		statsEdge: statsEdge{
-			edge:       e,
-			groupStats: make(map[models.GroupID]*GroupStats),
-			collected:  new(kexpvar.Int),
-			emitted:    new(kexpvar.Int),
-		},
-	}
-}
-
-func (e *StreamStatsEdge) Collect(m Message) error {
+func (e *streamStatsEdge) Collect(m Message) error {
 	if err := e.edge.Collect(m); err != nil {
 		return err
 	}
 	if m.Type() == Point {
 		e.collected.Add(1)
-		e.incCollected(m.(PointMessage).GroupInfo(), 1)
+		e.incCollected(m.Value().(PointMessage).GroupInfo(), 1)
 	}
 	return nil
 }
 
-func (e *StreamStatsEdge) Emit() (m Message, ok bool) {
+func (e *streamStatsEdge) Emit() (m Message, ok bool) {
 	m, ok = e.edge.Emit()
 	if ok && m.Type() == Point {
 		e.emitted.Add(1)
@@ -195,6 +201,6 @@ func (e *StreamStatsEdge) Emit() (m Message, ok bool) {
 	return
 }
 
-func (e *StreamStatsEdge) Type() pipeline.EdgeType {
+func (e *streamStatsEdge) Type() pipeline.EdgeType {
 	return e.edge.Type()
 }

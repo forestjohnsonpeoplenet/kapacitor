@@ -8,8 +8,8 @@ import (
 	"github.com/influxdata/kapacitor/models"
 )
 
-// Messages is data to be passed along an edge.
-// To determine the concrete type of a message use its Type method or perform a type switch on the Value of the message.
+// Message represents data to be passed along an edge.
+// To determine the concrete type of a message, and therefore access the data, use the Value method to get a non-pointer value and type assert the value to the contrete type.
 type Message interface {
 	// Type returns the type of the message.
 	Type() MessageType
@@ -47,6 +47,8 @@ func (m MessageType) String() string {
 	}
 }
 
+// PointMessage is a single point.
+// TODO(nathanielc): Define the structure of the type here instead of in the models package.
 type PointMessage models.Point
 
 func (PointMessage) Type() MessageType {
@@ -69,6 +71,8 @@ func (pm *PointMessage) UpdateGroup() {
 	pm.Group = models.ToGroupID(pm.Name, pm.Tags, pm.Dimensions)
 }
 
+// BeginBatchMessage marks the beginning of a batch of points.
+// Once a BeginBatchMessage is received all subsequent message will be BatchPointMessages until an EndBatchMessage is received.
 type BeginBatchMessage struct {
 	Name       string
 	Group      models.GroupID
@@ -98,6 +102,7 @@ func (bb *BeginBatchMessage) UpdateGroup() {
 	bb.Group = models.ToGroupID(bb.Name, bb.Tags, bb.Dimensions)
 }
 
+// BatchPointMessage is a single point in a batch of data.
 type BatchPointMessage models.BatchPoint
 
 func (BatchPointMessage) Type() MessageType {
@@ -119,6 +124,7 @@ func (eb EndBatchMessage) Value() interface{} {
 	return eb
 }
 
+// BufferedBatchMessage is a message containing all data for a single batch.
 type BufferedBatchMessage struct {
 	Begin  BeginBatchMessage
 	Points []BatchPointMessage

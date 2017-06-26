@@ -37,14 +37,14 @@ func (stn *StateTrackingNode) runStateTracking(_ []byte) error {
 		stn.ins[0],
 		stn,
 	)
-	stn.statMap.Set(statCardinalityGauge, consumer.Cardinality)
-	return consumer.Run()
+	stn.statMap.Set(statCardinalityGauge, consumer.CardinalityVar())
+	return consumer.Consume()
 }
 
 func (stn *StateTrackingNode) NewGroup(group models.GroupID) edge.Receiver {
-	return edge.NewForwardingReceiverFromStats(
+	return edge.NewReceiverFromForwardReceiverWithStats(
 		stn.outs,
-		edge.NewTimedForwardingReceiver(stn.timer, stn.newGroup()),
+		edge.NewTimedForwardReceiver(stn.timer, stn.newGroup()),
 	)
 }
 
@@ -54,7 +54,8 @@ func (stn *StateTrackingNode) newGroup() *stateTrackingGroup {
 		stn: stn,
 	}
 
-	// Error is explicitly check already
+	// Error is explicitly checked when the StateTrackingNode is first created.
+	// TODO(nathanielc): Update the stateful expression API to be able to create a new expression from an existing expression.
 	g.Expression, _ = stateful.NewExpression(stn.lambda.Expression)
 	g.ScopePool = stateful.NewScopePool(ast.FindReferenceVariables(stn.lambda.Expression))
 
