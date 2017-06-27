@@ -23,13 +23,6 @@ type StatsEdge interface {
 	ReadGroupStats(func(*GroupStats))
 }
 
-// GroupInfo identifies and contians information about a specific group.
-type GroupInfo struct {
-	Group models.GroupID
-	Tags  models.Tags
-	Dims  models.Dimensions
-}
-
 //  GroupStats represents the statistics for a specific group.
 type GroupStats struct {
 	GroupInfo GroupInfo

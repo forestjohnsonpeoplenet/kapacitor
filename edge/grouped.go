@@ -14,6 +14,13 @@ type GroupedConsumer interface {
 	CardinalityVar() expvar.IntVar
 }
 
+// GroupInfo identifies and contians information about a specific group.
+type GroupInfo struct {
+	Group models.GroupID
+	Tags  models.Tags
+	Dims  models.Dimensions
+}
+
 type groupedConsumer struct {
 	consumer    Consumer
 	gr          GroupedReceiver
@@ -40,18 +47,25 @@ func (c *groupedConsumer) CardinalityVar() expvar.IntVar {
 	return c.cardinality
 }
 
-func (c *groupedConsumer) getOrCreateGroup(group models.GroupID) Receiver {
-	r, ok := c.groups[group]
+func (c *groupedConsumer) getOrCreateGroup(group GroupInfo, first Message) (Receiver, error) {
+	r, ok := c.groups[group.Group]
 	if !ok {
 		c.cardinality.Add(1)
-		r = c.gr.NewGroup(group)
-		c.groups[group] = r
+		recv, err := c.gr.NewGroup(group, first)
+		if err != nil {
+			return nil, err
+		}
+		c.groups[group.Group] = recv
+		r = recv
 	}
-	return r
+	return r, nil
 }
 
 func (c *groupedConsumer) BeginBatch(begin BeginBatchMessage) error {
-	r := c.getOrCreateGroup(begin.Group)
+	r, err := c.getOrCreateGroup(begin.GroupInfo(), begin)
+	if err != nil {
+		return err
+	}
 	c.current = r
 	return r.BeginBatch(begin)
 }
@@ -70,7 +84,10 @@ func (c *groupedConsumer) EndBatch(end EndBatchMessage) error {
 }
 
 func (c *groupedConsumer) Point(p PointMessage) error {
-	r := c.getOrCreateGroup(p.Group)
+	r, err := c.getOrCreateGroup(p.GroupInfo(), p)
+	if err != nil {
+		return err
+	}
 	return r.Point(p)
 }
 

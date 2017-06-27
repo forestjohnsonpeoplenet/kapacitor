@@ -59,9 +59,13 @@ func (p PointMessage) Value() interface{} {
 }
 
 func (pm PointMessage) GroupInfo() GroupInfo {
+	tags := make(models.Tags, len(pm.Dimensions.TagNames))
+	for _, t := range pm.Dimensions.TagNames {
+		tags[t] = pm.Tags[t]
+	}
 	return GroupInfo{
 		Group: pm.Group,
-		Tags:  pm.Tags,
+		Tags:  tags,
 		Dims:  pm.Dimensions,
 	}
 }
@@ -69,6 +73,14 @@ func (pm PointMessage) GroupInfo() GroupInfo {
 func (pm *PointMessage) UpdateGroup() {
 	sort.Strings(pm.Dimensions.TagNames)
 	pm.Group = models.ToGroupID(pm.Name, pm.Tags, pm.Dimensions)
+}
+
+func BatchPointFromPoint(p PointMessage) BatchPointMessage {
+	return BatchPointMessage{
+		Time:   p.Time,
+		Fields: p.Fields,
+		Tags:   p.Tags,
+	}
 }
 
 // BeginBatchMessage marks the beginning of a batch of points.

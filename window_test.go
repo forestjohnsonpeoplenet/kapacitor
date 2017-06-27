@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/influxdata/kapacitor/models"
+	"github.com/influxdata/kapacitor/edge"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -23,7 +23,7 @@ func TestWindowBufferByTime(t *testing.T) {
 	for i := 1; i <= size; i++ {
 
 		t := time.Unix(int64(i), 0)
-		p := models.Point{
+		p := edge.PointMessage{
 			Time: t,
 		}
 		buf.insert(p)
@@ -58,7 +58,7 @@ func TestWindowBufferByTime(t *testing.T) {
 	for i := 1; i <= size*2; i++ {
 
 		t := time.Unix(int64(i+size), 0)
-		p := models.Point{
+		p := edge.PointMessage{
 			Time: t,
 		}
 		buf.insert(p)
@@ -118,9 +118,7 @@ func TestWindowBufferByCount(t *testing.T) {
 		t.Logf("Starting test size %d period %d every %d", tc.size, tc.period, tc.every)
 		w := newWindowByCount(
 			"test",
-			models.NilGroup,
-			nil,
-			false,
+			edge.GroupInfo{},
 			tc.period,
 			tc.every,
 			tc.fillPeriod,
@@ -129,16 +127,22 @@ func TestWindowBufferByCount(t *testing.T) {
 
 		// fill buffer
 		for i := 1; i <= tc.size; i++ {
-			p := models.Point{
+			p := edge.PointMessage{
 				Time: time.Unix(int64(i), 0).UTC(),
 			}
-			b, emit := w.Insert(p)
+			msg, err := w.Point(p)
+			if err != nil {
+				t.Fatal(err)
+			}
 			expEmit := tc.every == 0 || i%tc.every == 0
 			if tc.fillPeriod {
 				expEmit = i > tc.period && expEmit
 			}
-			if got, exp := emit, expEmit; got != exp {
-				t.Errorf("%d unexpected emit: got %t exp %t %d %d %d", i, got, exp, w.period, w.nextEmit, w.stop)
+			if expEmit && msg == nil {
+				t.Errorf("%d unexpected nil forward message: got nil message, expected non nil message", i)
+			}
+			if !expEmit && msg != nil {
+				t.Errorf("%d unexpected forward message: got non-nil message %v, expected nil message", i, msg)
 			}
 
 			size := i
@@ -159,7 +163,11 @@ func TestWindowBufferByCount(t *testing.T) {
 				t.Errorf("%d unexpected stop: got %d exp %d", i, got, exp)
 			}
 
-			if emit {
+			if msg != nil {
+				if msg.Type() != edge.BufferedBatch {
+					t.Fatalf("unexpected message type %v", msg.Type())
+				}
+				b := msg.Value().(edge.BufferedBatchMessage)
 				l := i
 				if l > tc.period {
 					l = tc.period

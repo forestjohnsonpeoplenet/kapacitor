@@ -41,11 +41,11 @@ func (stn *StateTrackingNode) runStateTracking(_ []byte) error {
 	return consumer.Consume()
 }
 
-func (stn *StateTrackingNode) NewGroup(group models.GroupID) edge.Receiver {
+func (stn *StateTrackingNode) NewGroup(group edge.GroupInfo, first edge.Message) (edge.Receiver, error) {
 	return edge.NewReceiverFromForwardReceiverWithStats(
 		stn.outs,
 		edge.NewTimedForwardReceiver(stn.timer, stn.newGroup()),
-	)
+	), nil
 }
 
 func (stn *StateTrackingNode) newGroup() *stateTrackingGroup {

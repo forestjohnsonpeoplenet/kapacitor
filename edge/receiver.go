@@ -1,6 +1,8 @@
 package edge
 
-import "github.com/influxdata/kapacitor/models"
+import (
+	"github.com/influxdata/kapacitor/models"
+)
 
 // Receiver handles messages as they arrive via a consumer.
 type Receiver interface {
@@ -13,6 +15,8 @@ type Receiver interface {
 
 // GroupedReceiver creates and deletes receivers as groups are created and deleted.
 type GroupedReceiver interface {
-	NewGroup(group models.GroupID) Receiver
+	// NewGroup signals that a new group has been discovered in the data.
+	// Information on the group and the message that first triggered its creation are provided.
+	NewGroup(group GroupInfo, first Message) (Receiver, error)
 	DeleteGroup(group models.GroupID)
 }
