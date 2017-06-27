@@ -14,6 +14,14 @@ type GroupedConsumer interface {
 	CardinalityVar() expvar.IntVar
 }
 
+// GroupedReceiver creates and deletes receivers as groups are created and deleted.
+type GroupedReceiver interface {
+	// NewGroup signals that a new group has been discovered in the data.
+	// Information on the group and the message that first triggered its creation are provided.
+	NewGroup(group GroupInfo, first Message) (Receiver, error)
+	DeleteGroup(group models.GroupID)
+}
+
 // GroupInfo identifies and contians information about a specific group.
 type GroupInfo struct {
 	Group models.GroupID

@@ -9,6 +9,15 @@ type Consumer interface {
 	Consume() error
 }
 
+// Receiver handles messages as they arrive via a consumer.
+type Receiver interface {
+	BeginBatch(begin BeginBatchMessage) error
+	BatchPoint(bp BatchPointMessage) error
+	EndBatch(end EndBatchMessage) error
+	Point(p PointMessage) error
+	Barrier(b BarrierMessage) error
+}
+
 type consumer struct {
 	edge Edge
 	r    Receiver

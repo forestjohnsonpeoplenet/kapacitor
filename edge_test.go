@@ -29,7 +29,8 @@ var point = edge.PointMessage{
 		"tag3": "value3",
 		"tag4": "value4",
 	},
-	Group: groupID,
+	Group:      groupID,
+	Dimensions: groupDims,
 	Fields: models.Fields{
 		"field1": 42,
 		"field2": 4.2,
@@ -40,10 +41,11 @@ var point = edge.PointMessage{
 
 var batch = edge.BufferedBatchMessage{
 	Begin: edge.BeginBatchMessage{
-		Name:     name,
-		Group:    groupID,
-		Tags:     groupTags,
-		SizeHint: 2,
+		Name:       name,
+		Tags:       groupTags,
+		Group:      groupID,
+		Dimensions: groupDims,
+		SizeHint:   2,
 	},
 	End: edge.EndBatchMessage{
 		TMax: now,
@@ -113,9 +115,9 @@ var emittedMsg edge.Message
 var emittedOK bool
 
 func BenchmarkCollectPoint(b *testing.B) {
-	b.ReportAllocs()
 	ls := loggingtest.New()
 	e := newEdge("BenchmarkCollectPoint", "parent", "child", pipeline.StreamEdge, defaultEdgeBufferSize, ls)
+	b.ReportAllocs()
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
@@ -126,9 +128,9 @@ func BenchmarkCollectPoint(b *testing.B) {
 }
 
 func BenchmarkCollectBatch(b *testing.B) {
-	b.ReportAllocs()
 	ls := loggingtest.New()
-	e := newEdge("BCollectPoint", "parent", "child", pipeline.StreamEdge, defaultEdgeBufferSize, ls)
+	e := newEdge("BenchmarkCollectBatch", "parent", "child", pipeline.StreamEdge, defaultEdgeBufferSize, ls)
+	b.ReportAllocs()
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
