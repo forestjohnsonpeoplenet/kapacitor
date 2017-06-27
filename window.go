@@ -394,13 +394,13 @@ func (w *windowByCount) Point(p edge.PointMessage) (msg edge.Message, err error)
 	w.count++
 	//Check if its time to emit
 	if w.count == w.nextEmit {
+		w.nextEmit += w.every
 		msg = w.batch()
 	}
 	return
 }
 
 func (w *windowByCount) batch() edge.BufferedBatchMessage {
-	w.nextEmit += w.every
 	points := w.points()
 	return edge.BufferedBatchMessage{
 		Begin: edge.BeginBatchMessage{

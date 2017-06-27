@@ -95,35 +95,35 @@ func (e *statsEdge) ReadGroupStats(f func(groupStat *GroupStats)) {
 	}
 }
 
-func (e *statsEdge) incCollected(info GroupInfo, count int64) {
+func (e *statsEdge) incCollected(group models.GroupID, infoF func() GroupInfo, count int64) {
 	// Manually unlock below as defer was too much of a performance hit
 	e.mu.Lock()
 
-	if stats, ok := e.groupStats[info.Group]; ok {
+	if stats, ok := e.groupStats[group]; ok {
 		stats.Collected += count
 	} else {
 		stats = &GroupStats{
 			Collected: count,
-			GroupInfo: info,
+			GroupInfo: infoF(),
 		}
-		e.groupStats[info.Group] = stats
+		e.groupStats[group] = stats
 	}
 	e.mu.Unlock()
 }
 
 // Increment the emitted count of the group for this edge.
-func (e *statsEdge) incEmitted(info GroupInfo, count int64) {
+func (e *statsEdge) incEmitted(group models.GroupID, infoF func() GroupInfo, count int64) {
 	// Manually unlock below as defer was too much of a performance hit
 	e.mu.Lock()
 
-	if stats, ok := e.groupStats[info.Group]; ok {
+	if stats, ok := e.groupStats[group]; ok {
 		stats.Emitted += count
 	} else {
 		stats = &GroupStats{
 			Emitted:   count,
-			GroupInfo: info,
+			GroupInfo: infoF(),
 		}
-		e.groupStats[info.Group] = stats
+		e.groupStats[group] = stats
 	}
 	e.mu.Unlock()
 }
@@ -131,8 +131,10 @@ func (e *statsEdge) incEmitted(info GroupInfo, count int64) {
 type batchStatsEdge struct {
 	statsEdge
 
-	currentGroup GroupInfo
-	size         int64
+	currentCollectGroup GroupInfo
+	currentEmitGroup    GroupInfo
+	collectSize         int64
+	emitSize            int64
 }
 
 func (e *batchStatsEdge) Collect(m Message) error {
@@ -142,16 +144,20 @@ func (e *batchStatsEdge) Collect(m Message) error {
 	switch b := m.Value().(type) {
 	case BeginBatchMessage:
 		g := b.GroupInfo()
-		e.currentGroup = g
-		e.size = 0
-	case PointMessage:
-		e.size++
+		e.currentCollectGroup = g
+		e.collectSize = 0
+	case BatchPointMessage:
+		e.collectSize++
 	case EndBatchMessage:
 		e.collected.Add(1)
-		e.incCollected(e.currentGroup, e.size)
+		e.incCollected(
+			e.currentCollectGroup.Group,
+			func() GroupInfo { return e.currentCollectGroup },
+			e.collectSize,
+		)
 	case BufferedBatchMessage:
 		e.collected.Add(1)
-		e.incCollected(b.Begin.GroupInfo(), int64(len(b.Points)))
+		e.incCollected(b.Begin.Group, b.Begin.GroupInfo, int64(len(b.Points)))
 	default:
 		// Do not count other messages
 		// TODO(nathanielc): How should we count other messages?
@@ -161,8 +167,28 @@ func (e *batchStatsEdge) Collect(m Message) error {
 
 func (e *batchStatsEdge) Emit() (m Message, ok bool) {
 	m, ok = e.edge.Emit()
-	if ok && m.Type() == EndBatch {
-		e.emitted.Add(1)
+	if ok {
+		switch b := m.Value().(type) {
+		case BeginBatchMessage:
+			g := b.GroupInfo()
+			e.currentEmitGroup = g
+			e.emitSize = 0
+		case BatchPointMessage:
+			e.emitSize++
+		case EndBatchMessage:
+			e.emitted.Add(1)
+			e.incEmitted(
+				e.currentEmitGroup.Group,
+				func() GroupInfo { return e.currentEmitGroup },
+				e.emitSize,
+			)
+		case BufferedBatchMessage:
+			e.emitted.Add(1)
+			e.incEmitted(b.Begin.Group, b.Begin.GroupInfo, int64(len(b.Points)))
+		default:
+			// Do not count other messages
+			// TODO(nathanielc): How should we count other messages?
+		}
 	}
 	return
 }
@@ -181,7 +207,8 @@ func (e *streamStatsEdge) Collect(m Message) error {
 	}
 	if m.Type() == Point {
 		e.collected.Add(1)
-		e.incCollected(m.Value().(PointMessage).GroupInfo(), 1)
+		p := m.Value().(PointMessage)
+		e.incCollected(p.Group, p.GroupInfo, 1)
 	}
 	return nil
 }
@@ -190,6 +217,8 @@ func (e *streamStatsEdge) Emit() (m Message, ok bool) {
 	m, ok = e.edge.Emit()
 	if ok && m.Type() == Point {
 		e.emitted.Add(1)
+		p := m.Value().(PointMessage)
+		e.incEmitted(p.Group, p.GroupInfo, 1)
 	}
 	return
 }
