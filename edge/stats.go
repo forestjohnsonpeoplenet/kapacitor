@@ -141,7 +141,7 @@ func (e *batchStatsEdge) Collect(m Message) error {
 	if err := e.edge.Collect(m); err != nil {
 		return err
 	}
-	switch b := m.Value().(type) {
+	switch b := m.(type) {
 	case BeginBatchMessage:
 		g := b.GroupInfo()
 		e.currentCollectGroup = g
@@ -157,7 +157,8 @@ func (e *batchStatsEdge) Collect(m Message) error {
 		)
 	case BufferedBatchMessage:
 		e.collected.Add(1)
-		e.incCollected(b.Begin.Group, b.Begin.GroupInfo, int64(len(b.Points)))
+		begin := b.Begin()
+		e.incCollected(begin.GroupID(), begin.GroupInfo, int64(len(b.Points())))
 	default:
 		// Do not count other messages
 		// TODO(nathanielc): How should we count other messages?
@@ -168,7 +169,7 @@ func (e *batchStatsEdge) Collect(m Message) error {
 func (e *batchStatsEdge) Emit() (m Message, ok bool) {
 	m, ok = e.edge.Emit()
 	if ok {
-		switch b := m.Value().(type) {
+		switch b := m.(type) {
 		case BeginBatchMessage:
 			g := b.GroupInfo()
 			e.currentEmitGroup = g
@@ -184,7 +185,8 @@ func (e *batchStatsEdge) Emit() (m Message, ok bool) {
 			)
 		case BufferedBatchMessage:
 			e.emitted.Add(1)
-			e.incEmitted(b.Begin.Group, b.Begin.GroupInfo, int64(len(b.Points)))
+			begin := b.Begin()
+			e.incEmitted(begin.GroupID(), begin.GroupInfo, int64(len(b.Points())))
 		default:
 			// Do not count other messages
 			// TODO(nathanielc): How should we count other messages?
@@ -207,8 +209,8 @@ func (e *streamStatsEdge) Collect(m Message) error {
 	}
 	if m.Type() == Point {
 		e.collected.Add(1)
-		p := m.Value().(PointMessage)
-		e.incCollected(p.Group, p.GroupInfo, 1)
+		p := m.(GroupInfoer)
+		e.incCollected(p.GroupID(), p.GroupInfo, 1)
 	}
 	return nil
 }
@@ -217,8 +219,8 @@ func (e *streamStatsEdge) Emit() (m Message, ok bool) {
 	m, ok = e.edge.Emit()
 	if ok && m.Type() == Point {
 		e.emitted.Add(1)
-		p := m.Value().(PointMessage)
-		e.incEmitted(p.Group, p.GroupInfo, 1)
+		p := m.(GroupInfoer)
+		e.incEmitted(p.GroupID(), p.GroupInfo, 1)
 	}
 	return
 }

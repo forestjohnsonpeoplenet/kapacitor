@@ -1,9 +1,9 @@
 package edge
 
 type BufferedReceiver interface {
-	// Batch processes an entire buffered batch.
+	// BufferedBatch processes an entire buffered batch.
 	// Do not modify the batch or the slice of Points as it is shared.
-	Batch(batch BufferedBatchMessage) error
+	BufferedBatch(batch BufferedBatchMessage) error
 	Point(p PointMessage) error
 	Barrier(b BarrierMessage) error
 }
@@ -18,23 +18,24 @@ func NewReceiverFromBufferedReceiver(r BufferedReceiver) Receiver {
 // bufferingReceiver implements the Receiver interface and buffers messages to invoke a BufferedReceiver.
 type bufferingReceiver struct {
 	r      BufferedReceiver
-	buffer BufferedBatchMessage
+	begin  BeginBatchMessage
+	points []BatchPointMessage
 }
 
 func (r *bufferingReceiver) BeginBatch(begin BeginBatchMessage) error {
-	r.buffer.Begin = begin
-	r.buffer.Points = make([]BatchPointMessage, 0, begin.SizeHint)
+	r.begin = begin
+	r.points = make([]BatchPointMessage, 0, begin.SizeHint())
 	return nil
 }
 
 func (r *bufferingReceiver) BatchPoint(bp BatchPointMessage) error {
-	r.buffer.Points = append(r.buffer.Points, bp)
+	r.points = append(r.points, bp)
 	return nil
 }
 
 func (r *bufferingReceiver) EndBatch(end EndBatchMessage) error {
-	r.buffer.End = end
-	return r.r.Batch(r.buffer)
+	buffer := NewBufferedBatchMessage(r.begin, r.points, end)
+	return r.r.BufferedBatch(buffer)
 }
 
 func (r *bufferingReceiver) Point(p PointMessage) error {

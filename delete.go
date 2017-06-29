@@ -56,13 +56,17 @@ func (n *DeleteNode) runDelete(snapshot []byte) error {
 }
 
 func (n *DeleteNode) BeginBatch(begin edge.BeginBatchMessage) (edge.Message, error) {
-	_, begin.Tags = n.doDeletes(nil, begin.Tags)
-	begin.UpdateGroup()
+	begin = begin.ShallowCopy()
+	_, tags := n.doDeletes(nil, begin.Tags())
+	begin.SetTags(tags)
 	return begin, nil
 }
 
 func (n *DeleteNode) BatchPoint(bp edge.BatchPointMessage) (edge.Message, error) {
-	bp.Fields, bp.Tags = n.doDeletes(bp.Fields, bp.Tags)
+	bp = bp.ShallowCopy()
+	fields, tags := n.doDeletes(bp.Fields(), bp.Tags())
+	bp.SetFields(fields)
+	bp.SetTags(tags)
 	return bp, nil
 }
 
@@ -71,30 +75,42 @@ func (n *DeleteNode) EndBatch(end edge.EndBatchMessage) (edge.Message, error) {
 }
 
 func (n *DeleteNode) Point(p edge.PointMessage) (edge.Message, error) {
-	p.Fields, p.Tags = n.doDeletes(p.Fields, p.Tags)
-	// Check if we deleted a group by dimension
-	updateDims := false
-	for _, dim := range p.Dimensions.TagNames {
-		if !n.tags[dim] {
-			updateDims = true
-			break
-		}
-	}
-	if updateDims {
-		newDims := make([]string, 0, len(p.Dimensions.TagNames))
-		for _, dim := range p.Dimensions.TagNames {
-			if !n.tags[dim] {
-				newDims = append(newDims, dim)
-			}
-		}
-		p.Dimensions.TagNames = newDims
-		p.Group = models.ToGroupID(p.Name, p.Tags, p.Dimensions)
+	p = p.ShallowCopy()
+	fields, tags := n.doDeletes(p.Fields(), p.Tags())
+	p.SetFields(fields)
+	p.SetTags(tags)
+	dims := p.Dimensions()
+	if n.checkForDeletedDimension(dims) {
+		p.SetDimensions(n.deleteDimensions(dims))
 	}
 	return p, nil
 }
 
 func (n *DeleteNode) Barrier(b edge.BarrierMessage) (edge.Message, error) {
 	return b, nil
+}
+
+// checkForDeletedDimension checks if we deleted a group by dimension
+func (n *DeleteNode) checkForDeletedDimension(dimensions models.Dimensions) bool {
+	for _, dim := range dimensions.TagNames {
+		if n.tags[dim] {
+			return true
+		}
+	}
+	return false
+}
+
+func (n *DeleteNode) deleteDimensions(dims models.Dimensions) models.Dimensions {
+	newTagNames := make([]string, 0, len(dims.TagNames)-1)
+	for _, dim := range dims.TagNames {
+		if !n.tags[dim] {
+			newTagNames = append(newTagNames, dim)
+		}
+	}
+	return models.Dimensions{
+		TagNames: newTagNames,
+		ByName:   dims.ByName,
+	}
 }
 
 func (n *DeleteNode) doDeletes(fields models.Fields, tags models.Tags) (models.Fields, models.Tags) {

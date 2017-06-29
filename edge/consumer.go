@@ -43,7 +43,7 @@ func NewConsumerWithBufferedReceiver(e Edge, b BufferedReceiver) Consumer {
 
 func (ec *consumer) Consume() error {
 	for msg, ok := ec.edge.Emit(); ok; msg, ok = ec.edge.Emit() {
-		switch m := msg.Value().(type) {
+		switch m := msg.(type) {
 		case BeginBatchMessage:
 			if err := ec.r.BeginBatch(m); err != nil {
 				return err
@@ -59,20 +59,20 @@ func (ec *consumer) Consume() error {
 		case BufferedBatchMessage:
 			// If we have a buffered receiver pass the batch straight through.
 			if ec.b != nil {
-				if err := ec.b.Batch(m); err != nil {
+				if err := ec.b.BufferedBatch(m); err != nil {
 					return err
 				}
 			} else {
 				// Pass the batch non buffered.
-				if err := ec.r.BeginBatch(m.Begin); err != nil {
+				if err := ec.r.BeginBatch(m.Begin()); err != nil {
 					return err
 				}
-				for _, bp := range m.Points {
+				for _, bp := range m.Points() {
 					if err := ec.r.BatchPoint(bp); err != nil {
 						return err
 					}
 				}
-				if err := ec.r.EndBatch(m.End); err != nil {
+				if err := ec.r.EndBatch(m.End()); err != nil {
 					return err
 				}
 			}

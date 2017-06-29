@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/influxdata/kapacitor/edge"
+	"github.com/influxdata/kapacitor/models"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -23,9 +24,13 @@ func TestWindowBufferByTime(t *testing.T) {
 	for i := 1; i <= size; i++ {
 
 		t := time.Unix(int64(i), 0)
-		p := edge.PointMessage{
-			Time: t,
-		}
+		p := edge.NewPointMessage(
+			"name", "db", "rp",
+			models.Dimensions{},
+			nil,
+			nil,
+			t,
+		)
 		buf.insert(p)
 
 		assert.Equal(i, buf.size)
@@ -46,7 +51,7 @@ func TestWindowBufferByTime(t *testing.T) {
 		points := buf.points()
 		if assert.Equal(size-i, len(points)) {
 			for _, p := range points {
-				assert.True(!p.Time.Before(oldest), "Point %s is not after oldest time %s", p.Time, oldest)
+				assert.True(!p.Time().Before(oldest), "Point %s is not after oldest time %s", p.Time(), oldest)
 			}
 		}
 	}
@@ -58,9 +63,13 @@ func TestWindowBufferByTime(t *testing.T) {
 	for i := 1; i <= size*2; i++ {
 
 		t := time.Unix(int64(i+size), 0)
-		p := edge.PointMessage{
-			Time: t,
-		}
+		p := edge.NewPointMessage(
+			"name", "db", "rp",
+			models.Dimensions{},
+			nil,
+			nil,
+			t,
+		)
 		buf.insert(p)
 
 		assert.Equal(i, buf.size)
@@ -69,7 +78,7 @@ func TestWindowBufferByTime(t *testing.T) {
 		if assert.Equal(i, len(points)) {
 			for _, p := range points {
 				if assert.NotNil(p, "i:%d", i) {
-					assert.True(!p.Time.Before(oldest), "Point %s is not after oldest time %s", p.Time, oldest)
+					assert.True(!p.Time().Before(oldest), "Point %s is not after oldest time %s", p.Time(), oldest)
 				}
 			}
 		}
@@ -127,9 +136,13 @@ func TestWindowBufferByCount(t *testing.T) {
 
 		// fill buffer
 		for i := 1; i <= tc.size; i++ {
-			p := edge.PointMessage{
-				Time: time.Unix(int64(i), 0).UTC(),
-			}
+			p := edge.NewPointMessage(
+				"name", "db", "rp",
+				models.Dimensions{},
+				nil,
+				nil,
+				time.Unix(int64(i), 0).UTC(),
+			)
 			msg, err := w.Point(p)
 			if err != nil {
 				t.Fatal(err)
@@ -167,18 +180,18 @@ func TestWindowBufferByCount(t *testing.T) {
 				if msg.Type() != edge.BufferedBatch {
 					t.Fatalf("unexpected message type %v", msg.Type())
 				}
-				b := msg.Value().(edge.BufferedBatchMessage)
+				b := msg.(edge.BufferedBatchMessage)
 				l := i
 				if l > tc.period {
 					l = tc.period
 				}
-				points := b.Points
+				points := b.Points()
 				if got, exp := len(points), l; got != exp {
 					t.Fatalf("%d unexpected number of points got %d exp %d", i, got, exp)
 				}
 
 				for j, p := range points {
-					if got, exp := p.Time, time.Unix(int64(i+j-len(points)+1), 0).UTC(); !got.Equal(exp) {
+					if got, exp := p.Time(), time.Unix(int64(i+j-len(points)+1), 0).UTC(); !got.Equal(exp) {
 						t.Errorf("%d unexpected point[%d].Time: got %v exp %v", i, j, got, exp)
 					}
 				}

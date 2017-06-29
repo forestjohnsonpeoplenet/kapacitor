@@ -59,7 +59,7 @@ func newFromNode(et *ExecutingTask, n *pipeline.FromNode, l *log.Logger) (*FromN
 		name: n.Measurement,
 	}
 	sn.node.runF = sn.runStream
-	sn.allDimensions, sn.dimensions = determineDimensions(n.Dimensions)
+	sn.allDimensions, sn.dimensions = determineTagNames(n.Dimensions, nil)
 
 	if n.Lambda != nil {
 		expr, err := stateful.NewExpression(n.Lambda.Expression)
@@ -126,4 +126,13 @@ func (s *FromNode) matches(p models.Point) bool {
 		}
 	}
 	return true
+}
+
+func setGroupOnPoint(p models.Point, allDimensions bool, dimensions models.Dimensions, excluded []string) models.Point {
+	if allDimensions {
+		dimensions.TagNames = filterExcludedTagNames(models.SortedKeys(p.Tags), excluded)
+	}
+	p.Group = models.ToGroupID(p.Name, p.Tags, dimensions)
+	p.Dimensions = dimensions
+	return p
 }

@@ -51,15 +51,15 @@ func (w *WindowNode) DeleteGroup(group models.GroupID) {
 }
 
 func (w *WindowNode) newWindow(group edge.GroupInfo, first edge.Message) (edge.ForwardReceiver, error) {
-	p, ok := first.Value().(edge.PointMessage)
+	p, ok := first.(edge.PointMessage)
 	if !ok {
 		return nil, fmt.Errorf("window only accepts stream edges, something went wrong got message of type %v", first.Type())
 	}
 	switch {
 	case w.w.Period != 0:
 		return newWindowByTime(
-			p.Name,
-			p.Time,
+			p.Name(),
+			p.Time(),
 			group,
 			w.w.Period,
 			w.w.Every,
@@ -69,7 +69,7 @@ func (w *WindowNode) newWindow(group edge.GroupInfo, first edge.Message) (edge.F
 		), nil
 	case w.w.PeriodCount != 0:
 		return newWindowByCount(
-			p.Name,
+			p.Name(),
 			group,
 			int(w.w.PeriodCount),
 			int(w.w.EveryCount),
@@ -160,20 +160,20 @@ func (w *windowByTime) Point(p edge.PointMessage) (msg edge.Message, err error) 
 		// Insert point before.
 		w.buf.insert(p)
 		// Since we are emitting every point we can use a right aligned window (oldest, now]
-		if !p.Time.Before(w.nextEmit) {
+		if !p.Time().Before(w.nextEmit) {
 			// purge old points
-			oldest := p.Time.Add(-1 * w.period)
+			oldest := p.Time().Add(-1 * w.period)
 			w.buf.purge(oldest, false)
 
 			// get current batch
-			msg = w.batch(p.Time)
+			msg = w.batch(p.Time())
 
 			// Next emit time is now
-			w.nextEmit = p.Time
+			w.nextEmit = p.Time()
 		}
 	} else {
 		// Since more points can arrive with the same time we need to use a left aligned window [oldest, now).
-		if !p.Time.Before(w.nextEmit) {
+		if !p.Time().Before(w.nextEmit) {
 			// purge old points
 			oldest := w.nextEmit.Add(-1 * w.period)
 			w.buf.purge(oldest, true)
@@ -183,7 +183,7 @@ func (w *windowByTime) Point(p edge.PointMessage) (msg edge.Message, err error) 
 
 			// Determine next emit time.
 			// This is dependent on the current time not the last time we emitted.
-			w.nextEmit = p.Time.Add(w.every)
+			w.nextEmit = p.Time().Add(w.every)
 			if w.align {
 				w.nextEmit = w.nextEmit.Truncate(w.every)
 			}
@@ -197,18 +197,17 @@ func (w *windowByTime) Point(p edge.PointMessage) (msg edge.Message, err error) 
 // batch returns the current window buffer as a batch message.
 // TODO(nathanielc): A possible optimization could be to not buffer the data at all if we know that we do not have overlapping windows.
 func (w *windowByTime) batch(tmax time.Time) edge.BufferedBatchMessage {
-	return edge.BufferedBatchMessage{
-		Begin: edge.BeginBatchMessage{
-			Name:       w.name,
-			Group:      w.group.Group,
-			Tags:       w.group.Tags,
-			Dimensions: w.group.Dims,
-		},
-		Points: w.buf.points(),
-		End: edge.EndBatchMessage{
-			TMax: tmax,
-		},
-	}
+	points := w.buf.points()
+	return edge.NewBufferedBatchMessage(
+		edge.NewBeginBatchMessage(
+			w.name,
+			w.group.Tags,
+			w.group.Dims,
+			len(points),
+		),
+		points,
+		edge.NewEndBatchMessage(tmax),
+	)
 }
 
 // implements a purpose built ring buffer for the window of points
@@ -275,22 +274,22 @@ func (b *windowTimeBuffer) purge(oldest time.Time, inclusive bool) {
 	}
 	if b.start < b.stop {
 		for ; b.start < b.stop; b.start++ {
-			if include(b.window[b.start].Time) {
+			if include(b.window[b.start].Time()) {
 				break
 			}
 		}
 		b.size = b.stop - b.start
 	} else {
-		if include(b.window[l-1].Time) {
+		if include(b.window[l-1].Time()) {
 			for ; b.start < l; b.start++ {
-				if include(b.window[b.start].Time) {
+				if include(b.window[b.start].Time()) {
 					break
 				}
 			}
 			b.size = l - b.start + b.stop
 		} else {
 			for b.start = 0; b.start < b.stop; b.start++ {
-				if include(b.window[b.start].Time) {
+				if include(b.window[b.start].Time()) {
 					break
 				}
 			}
@@ -380,11 +379,7 @@ func (w *windowByCount) Barrier(b edge.BarrierMessage) (edge.Message, error) {
 }
 
 func (w *windowByCount) Point(p edge.PointMessage) (msg edge.Message, err error) {
-	w.buf[w.stop] = edge.BatchPointMessage{
-		Time:   p.Time,
-		Fields: p.Fields,
-		Tags:   p.Tags,
-	}
+	w.buf[w.stop] = edge.BatchPointFromPoint(p)
 	w.stop = (w.stop + 1) % w.period
 	if w.size == w.period {
 		w.start = (w.start + 1) % w.period
@@ -402,18 +397,16 @@ func (w *windowByCount) Point(p edge.PointMessage) (msg edge.Message, err error)
 
 func (w *windowByCount) batch() edge.BufferedBatchMessage {
 	points := w.points()
-	return edge.BufferedBatchMessage{
-		Begin: edge.BeginBatchMessage{
-			Name:       w.name,
-			Group:      w.group.Group,
-			Tags:       w.group.Tags,
-			Dimensions: w.group.Dims,
-		},
-		Points: points,
-		End: edge.EndBatchMessage{
-			TMax: points[len(points)-1].Time,
-		},
-	}
+	return edge.NewBufferedBatchMessage(
+		edge.NewBeginBatchMessage(
+			w.name,
+			w.group.Tags,
+			w.group.Dims,
+			len(points),
+		),
+		points,
+		edge.NewEndBatchMessage(points[len(points)-1].Time()),
+	)
 }
 
 // Returns a copy of the current buffer.

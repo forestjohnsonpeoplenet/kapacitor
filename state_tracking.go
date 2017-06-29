@@ -73,16 +73,13 @@ func (g *stateTrackingGroup) BeginBatch(begin edge.BeginBatchMessage) (edge.Mess
 }
 
 func (g *stateTrackingGroup) BatchPoint(bp edge.BatchPointMessage) (edge.Message, error) {
-	pass, err := EvalPredicate(g.Expression, g.ScopePool, bp.Time, bp.Fields, bp.Tags)
+	bp = bp.ShallowCopy()
+	err := g.track(bp)
 	if err != nil {
 		g.stn.incrementErrorCount()
-		g.stn.logger.Println("E! error while evaluating epression:", err)
+		g.stn.logger.Println("E! error while evaluating expression:", err)
 		return nil, nil
 	}
-
-	bp.Fields = bp.Fields.Copy()
-	bp.Fields[g.stn.as] = g.tracker.track(bp.Time, pass)
-
 	return bp, nil
 }
 
@@ -91,17 +88,26 @@ func (g *stateTrackingGroup) EndBatch(end edge.EndBatchMessage) (edge.Message, e
 }
 
 func (g *stateTrackingGroup) Point(p edge.PointMessage) (edge.Message, error) {
-	pass, err := EvalPredicate(g.Expression, g.ScopePool, p.Time, p.Fields, p.Tags)
+	p = p.ShallowCopy()
+	err := g.track(p)
 	if err != nil {
 		g.stn.incrementErrorCount()
 		g.stn.logger.Println("E! error while evaluating expression:", err)
 		return nil, nil
 	}
-
-	p.Fields = p.Fields.Copy()
-	p.Fields[g.stn.as] = g.tracker.track(p.Time, pass)
-
 	return p, nil
+}
+
+func (g *stateTrackingGroup) track(p edge.FieldsTagsTimer) error {
+	pass, err := EvalPredicate(g.Expression, g.ScopePool, p.Time(), p.Fields(), p.Tags())
+	if err != nil {
+		return err
+	}
+
+	fields := p.Fields().Copy()
+	fields[g.stn.as] = g.tracker.track(p.Time(), pass)
+	p.SetFields(fields)
+	return nil
 }
 
 func (g *stateTrackingGroup) Barrier(b edge.BarrierMessage) (edge.Message, error) {

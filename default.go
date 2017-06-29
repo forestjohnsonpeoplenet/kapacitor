@@ -49,13 +49,17 @@ func (e *DefaultNode) runDefault(snapshot []byte) error {
 }
 
 func (e *DefaultNode) BeginBatch(begin edge.BeginBatchMessage) (edge.Message, error) {
-	_, begin.Tags = e.setDefaults(nil, begin.Tags)
-	begin.UpdateGroup()
+	begin = begin.ShallowCopy()
+	_, tags := e.setDefaults(nil, begin.Tags())
+	begin.SetTags(tags)
 	return begin, nil
 }
 
 func (e *DefaultNode) BatchPoint(bp edge.BatchPointMessage) (edge.Message, error) {
-	bp.Fields, bp.Tags = e.setDefaults(bp.Fields, bp.Tags)
+	bp = bp.ShallowCopy()
+	fields, tags := e.setDefaults(bp.Fields(), bp.Tags())
+	bp.SetFields(fields)
+	bp.SetTags(tags)
 	return bp, nil
 }
 
@@ -64,8 +68,10 @@ func (e *DefaultNode) EndBatch(end edge.EndBatchMessage) (edge.Message, error) {
 }
 
 func (e *DefaultNode) Point(p edge.PointMessage) (edge.Message, error) {
-	p.Fields, p.Tags = e.setDefaults(p.Fields, p.Tags)
-	p.UpdateGroup()
+	p = p.ShallowCopy()
+	fields, tags := e.setDefaults(p.Fields(), p.Tags())
+	p.SetFields(fields)
+	p.SetTags(tags)
 	return p, nil
 }
 

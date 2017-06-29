@@ -138,12 +138,21 @@ func (e *LegacyEdge) NextPoint() (models.Point, bool) {
 			e.logger.Printf("E! legacy edge expected message of type edge.PointMessage, got message of type %v", t)
 			continue
 		}
-		p, ok := m.Value().(edge.PointMessage)
+		p, ok := m.(edge.PointMessage)
 		if !ok {
 			e.logger.Printf("E! unexpected message type %T", m)
 			continue
 		}
-		return models.Point(p), true
+		return models.Point{
+			Name:            p.Name(),
+			Database:        p.Database(),
+			RetentionPolicy: p.RetentionPolicy(),
+			Group:           p.GroupID(),
+			Dimensions:      p.Dimensions(),
+			Tags:            p.Tags(),
+			Fields:          p.Fields(),
+			Time:            p.Time(),
+		}, true
 	}
 	return models.Point{}, false
 }
@@ -155,26 +164,28 @@ func (e *LegacyEdge) NextBatch() (models.Batch, bool) {
 
 BEGIN:
 	for m, ok := e.e.Emit(); ok; m, ok = e.e.Emit() {
-		switch msg := m.Value().(type) {
+		switch msg := m.(type) {
 		case edge.BeginBatchMessage:
-			b.Name = msg.Name
-			b.Group = msg.Group
-			b.Tags = msg.Tags
-			b.ByName = msg.Dimensions.ByName
-			b.Points = make([]models.BatchPoint, 0, msg.SizeHint)
+			b.Name = msg.Name()
+			b.Group = msg.GroupID()
+			b.Tags = msg.Tags()
+			b.ByName = msg.Dimensions().ByName
+			b.Points = make([]models.BatchPoint, 0, msg.SizeHint())
 			break BEGIN
 		case edge.BufferedBatchMessage:
-			b.Name = msg.Begin.Name
-			b.Group = msg.Begin.Group
-			b.Tags = msg.Begin.Tags
-			b.ByName = msg.Begin.Dimensions.ByName
-			b.TMax = msg.End.TMax
-			b.Points = make([]models.BatchPoint, len(msg.Points))
-			for i, bp := range msg.Points {
+			begin := msg.Begin()
+			b.Name = begin.Name()
+			b.Group = begin.GroupID()
+			b.Tags = begin.Tags()
+			b.ByName = begin.Dimensions().ByName
+			b.TMax = msg.End().TMax()
+			points := msg.Points()
+			b.Points = make([]models.BatchPoint, len(points))
+			for i, bp := range points {
 				b.Points[i] = models.BatchPoint{
-					Time:   bp.Time,
-					Fields: bp.Fields,
-					Tags:   bp.Tags,
+					Time:   bp.Time(),
+					Fields: bp.Fields(),
+					Tags:   bp.Tags(),
 				}
 			}
 			return b, true
@@ -186,16 +197,16 @@ BEGIN:
 	finished := false
 MESSAGES:
 	for m, ok := e.e.Emit(); ok; m, ok = e.e.Emit() {
-		switch msg := m.Value().(type) {
+		switch msg := m.(type) {
 		case edge.EndBatchMessage:
-			b.TMax = msg.TMax
+			b.TMax = msg.TMax()
 			finished = true
 			break MESSAGES
 		case edge.BatchPointMessage:
 			b.Points = append(b.Points, models.BatchPoint{
-				Time:   msg.Time,
-				Fields: msg.Fields,
-				Tags:   msg.Tags,
+				Time:   msg.Time(),
+				Fields: msg.Fields(),
+				Tags:   msg.Tags(),
 			})
 		default:
 			e.logger.Printf("E! legacy edge expected message of type edge.EndBatch or edge.BatchPoint, got message of type %v", m.Type())
@@ -208,31 +219,35 @@ MESSAGES:
 func (e *LegacyEdge) CollectPoint(p models.Point) error {
 	e.collect.Lock()
 	defer e.collect.Unlock()
-	return e.e.Collect((edge.PointMessage)(p))
+	pm := edge.NewPointMessage(
+		p.Name,
+		p.Database,
+		p.RetentionPolicy,
+		p.Dimensions,
+		p.Tags,
+		p.Fields,
+		p.Time,
+	)
+	return e.e.Collect(pm)
 }
 
 func (e *LegacyEdge) CollectBatch(b models.Batch) error {
 	e.collect.Lock()
 	defer e.collect.Unlock()
-	if err := e.e.Collect(edge.BeginBatchMessage{
-		Name:       b.Name,
-		Group:      b.Group,
-		Tags:       b.Tags,
-		Dimensions: b.PointDimensions(),
-		SizeHint:   len(b.Points),
-	}); err != nil {
-		return err
+	begin := edge.NewBeginBatchMessage(
+		b.Name,
+		b.Tags,
+		b.PointDimensions(),
+		len(b.Points),
+	)
+	points := make([]edge.BatchPointMessage, begin.SizeHint())
+	for i, bp := range b.Points {
+		points[i] = edge.NewBatchPointMessage(
+			bp.Fields,
+			bp.Tags,
+			bp.Time,
+		)
 	}
-	for _, bp := range b.Points {
-		if err := e.e.Collect(edge.BatchPointMessage{
-			Time:   bp.Time,
-			Fields: bp.Fields,
-			Tags:   bp.Tags,
-		}); err != nil {
-			return err
-		}
-	}
-	return e.e.Collect(edge.EndBatchMessage{
-		TMax: b.TMax,
-	})
+	end := edge.NewEndBatchMessage(b.TMax)
+	return e.e.Collect(edge.NewBufferedBatchMessage(begin, points, end))
 }
