@@ -29,7 +29,7 @@ const (
 type Node interface {
 	pipeline.Node
 
-	addParentEdge(*Edge)
+	addParentEdge(edge.StatsEdge)
 
 	init()
 
@@ -89,7 +89,7 @@ type node struct {
 	nodeErrors *kexpvar.Int
 }
 
-func (n *node) addParentEdge(e *Edge) {
+func (n *node) addParentEdge(e edge.StatsEdge) {
 	n.ins = append(n.ins, e)
 }
 
@@ -165,7 +165,7 @@ func (n *node) Wait() error {
 	return n.err
 }
 
-func (n *node) addChild(c Node) (*Edge, error) {
+func (n *node) addChild(c Node) (edge.StatsEdge, error) {
 	if n.Provides() != c.Wants() {
 		return nil, fmt.Errorf("cannot add child mismatched edges: %s:%s -> %s:%s", n.Name(), n.Provides(), c.Name(), c.Wants())
 	}

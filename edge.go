@@ -24,7 +24,13 @@ const (
 var ErrAborted = errors.New("edged aborted")
 
 type StreamCollector interface {
-	CollectPoint(models.Point) error
+	CollectPoint(edge.PointMessage) error
+	Close() error
+}
+
+type StreamEdge interface {
+	CollectPoint(edge.PointMessage) error
+	EmitPoint() (edge.PointMessage, bool)
 	Close() error
 }
 
@@ -44,7 +50,7 @@ type Edge struct {
 	logger   *log.Logger
 }
 
-func newEdge(taskName, parentName, childName string, t pipeline.EdgeType, size int, logService LogService) *Edge {
+func newEdge(taskName, parentName, childName string, t pipeline.EdgeType, size int, logService LogService) edge.StatsEdge {
 	e := edge.NewStatsEdge(edge.NewChannelEdge(t, defaultEdgeBufferSize))
 	tags := map[string]string{
 		"task":   taskName,
@@ -224,8 +230,8 @@ func (e *LegacyEdge) CollectPoint(p models.Point) error {
 		p.Database,
 		p.RetentionPolicy,
 		p.Dimensions,
-		p.Tags,
 		p.Fields,
+		p.Tags,
 		p.Time,
 	)
 	return e.e.Collect(pm)

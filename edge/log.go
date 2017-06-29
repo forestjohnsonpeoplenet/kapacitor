@@ -33,7 +33,7 @@ func (e *logEdge) Collect(m Message) error {
 func (e *logEdge) Emit() (m Message, ok bool) {
 	m, ok = e.e.Emit()
 	if ok {
-		e.logger.Println("D! next:", m.Type())
+		e.logger.Println("D! emit:", m.Type())
 	}
 	return
 }

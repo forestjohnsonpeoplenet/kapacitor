@@ -22,6 +22,7 @@ import (
 	"github.com/influxdata/kapacitor"
 	kclient "github.com/influxdata/kapacitor/client/v1"
 	"github.com/influxdata/kapacitor/clock"
+	"github.com/influxdata/kapacitor/edge"
 	"github.com/influxdata/kapacitor/influxdb"
 	"github.com/influxdata/kapacitor/models"
 	"github.com/influxdata/kapacitor/services/httpd"
@@ -79,7 +80,7 @@ type Service struct {
 		Delete(*kapacitor.TaskMaster)
 	}
 	TaskMaster interface {
-		NewFork(name string, dbrps []kapacitor.DBRP, measurements []string) (*kapacitor.Edge, error)
+		NewFork(name string, dbrps []kapacitor.DBRP, measurements []string) (edge.StatsEdge, error)
 		DelFork(name string)
 		New(name string) *kapacitor.TaskMaster
 		Stream(name string) (kapacitor.StreamCollector, error)
@@ -1151,7 +1152,7 @@ func (r *Service) doLiveQueryReplay(id string, task *kapacitor.Task, clk clock.C
 		runErrC := make(chan error, 1)
 		switch task.Type {
 		case kapacitor.StreamTask:
-			source := make(chan models.Point)
+			source := make(chan edge.PointMessage)
 			go func() {
 				runErrC <- r.runQueryStream(source, query, cluster)
 			}()
@@ -1253,7 +1254,6 @@ func (s *Service) doRecordStream(id string, dataSource DataSource, stop time.Tim
 	if err != nil {
 		return err
 	}
-	le := kapacitor.NewLegacyEdge(e)
 	sw, err := dataSource.StreamWriter()
 	if err != nil {
 		return err
@@ -1263,11 +1263,17 @@ func (s *Service) doRecordStream(id string, dataSource DataSource, stop time.Tim
 	done := make(chan struct{})
 	go func() {
 		closed := false
-		for p, ok := le.NextPoint(); ok; p, ok = le.NextPoint() {
+		for m, ok := e.Emit(); ok; m, ok = e.Emit() {
 			if closed {
 				continue
 			}
-			if p.Time.After(stop) {
+			p, isPoint := m.(edge.PointMessage)
+			if !isPoint {
+				// Skip messages that are not points
+				continue
+			}
+
+			if p.Time().After(stop) {
 				closed = true
 				close(done)
 				//continue to read any data already on the edge, but just drop it.
@@ -1423,7 +1429,7 @@ func (r *Service) doRecordQuery(dataSource DataSource, q string, typ RecordingTy
 	errC := make(chan error, 2)
 	switch typ {
 	case StreamRecording:
-		points := make(chan models.Point)
+		points := make(chan edge.PointMessage)
 		go func() {
 			errC <- r.runQueryStream(points, q, cluster)
 		}()
@@ -1448,7 +1454,7 @@ func (r *Service) doRecordQuery(dataSource DataSource, q string, typ RecordingTy
 	return nil
 }
 
-func (r *Service) runQueryStream(source chan<- models.Point, q, cluster string) error {
+func (r *Service) runQueryStream(source chan<- edge.PointMessage, q, cluster string) error {
 	defer close(source)
 	dbrp, resp, err := r.execQuery(q, cluster)
 	if err != nil {
@@ -1500,14 +1506,15 @@ func (r *Service) runQueryStream(source chan<- models.Point, q, cluster string) 
 						break
 					}
 					// Write point
-					p := models.Point{
-						Name:            batches[b].Name,
-						Database:        dbrp.Database,
-						RetentionPolicy: dbrp.RetentionPolicy,
-						Tags:            bp.Tags,
-						Fields:          bp.Fields,
-						Time:            bp.Time,
-					}
+					p := edge.NewPointMessage(
+						batches[b].Name,
+						dbrp.Database,
+						dbrp.RetentionPolicy,
+						models.Dimensions{},
+						bp.Fields,
+						bp.Tags,
+						bp.Time,
+					)
 					source <- p
 				}
 				// Remove written points
@@ -1558,7 +1565,7 @@ func (r *Service) saveBatchQuery(dataSource DataSource, batches <-chan models.Ba
 	return archiver.Close()
 }
 
-func (s *Service) saveStreamQuery(dataSource DataSource, points <-chan models.Point, precision string) error {
+func (s *Service) saveStreamQuery(dataSource DataSource, points <-chan edge.PointMessage, precision string) error {
 	sw, err := dataSource.StreamWriter()
 	if err != nil {
 		return err

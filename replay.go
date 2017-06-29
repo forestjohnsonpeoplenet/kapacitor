@@ -9,11 +9,12 @@ import (
 
 	dbmodels "github.com/influxdata/influxdb/models"
 	"github.com/influxdata/kapacitor/clock"
+	"github.com/influxdata/kapacitor/edge"
 	"github.com/influxdata/kapacitor/models"
 )
 
 // Replay stream data from a channel source.
-func ReplayStreamFromChan(clck clock.Clock, points <-chan models.Point, collector StreamCollector, recTime bool) <-chan error {
+func ReplayStreamFromChan(clck clock.Clock, points <-chan edge.PointMessage, collector StreamCollector, recTime bool) <-chan error {
 	errC := make(chan error, 1)
 	go func() {
 		errC <- replayStreamFromChan(clck, points, collector, recTime)
@@ -25,7 +26,7 @@ func ReplayStreamFromChan(clck clock.Clock, points <-chan models.Point, collecto
 func ReplayStreamFromIO(clck clock.Clock, data io.ReadCloser, collector StreamCollector, recTime bool, precision string) <-chan error {
 	allErrs := make(chan error, 2)
 	errC := make(chan error, 1)
-	points := make(chan models.Point)
+	points := make(chan edge.PointMessage)
 	go func() {
 		allErrs <- replayStreamFromChan(clck, points, collector, recTime)
 	}()
@@ -45,19 +46,20 @@ func ReplayStreamFromIO(clck clock.Clock, data io.ReadCloser, collector StreamCo
 	return errC
 }
 
-func replayStreamFromChan(clck clock.Clock, points <-chan models.Point, collector StreamCollector, recTime bool) error {
+func replayStreamFromChan(clck clock.Clock, points <-chan edge.PointMessage, collector StreamCollector, recTime bool) error {
 	defer collector.Close()
 	start := time.Time{}
 	var diff time.Duration
 	zero := clck.Zero()
 	for p := range points {
 		if start.IsZero() {
-			start = p.Time
+			start = p.Time()
 			diff = zero.Sub(start)
 		}
-		waitTime := p.Time.Add(diff).UTC()
+		waitTime := p.Time().Add(diff).UTC()
 		if !recTime {
-			p.Time = waitTime
+			p = p.ShallowCopy()
+			p.SetTime(waitTime)
 		}
 		clck.Until(waitTime)
 		err := collector.CollectPoint(p)
@@ -68,7 +70,7 @@ func replayStreamFromChan(clck clock.Clock, points <-chan models.Point, collecto
 	return nil
 }
 
-func readPointsFromIO(data io.ReadCloser, points chan<- models.Point, precision string) error {
+func readPointsFromIO(data io.ReadCloser, points chan<- edge.PointMessage, precision string) error {
 	defer data.Close()
 	defer close(points)
 
@@ -93,15 +95,15 @@ func readPointsFromIO(data io.ReadCloser, points chan<- models.Point, precision 
 			return err
 		}
 		mp := mps[0]
-		p := models.Point{
-			Database:        db,
-			RetentionPolicy: rp,
-			Name:            mp.Name(),
-			Group:           models.NilGroup,
-			Tags:            models.Tags(mp.Tags().Map()),
-			Fields:          models.Fields(mp.Fields()),
-			Time:            mp.Time().UTC(),
-		}
+		p := edge.NewPointMessage(
+			mp.Name(),
+			db,
+			rp,
+			models.Dimensions{},
+			models.Fields(mp.Fields()),
+			models.Tags(mp.Tags().Map()),
+			mp.Time().UTC(),
+		)
 		points <- p
 	}
 	return nil
@@ -256,8 +258,8 @@ func readBatchFromIO(data io.ReadCloser, batches chan<- models.Batch) error {
 	return nil
 }
 
-func WritePointForRecording(w io.Writer, p models.Point, precision string) error {
-	if _, err := fmt.Fprintf(w, "%s\n%s\n", p.Database, p.RetentionPolicy); err != nil {
+func WritePointForRecording(w io.Writer, p edge.PointMessage, precision string) error {
+	if _, err := fmt.Fprintf(w, "%s\n%s\n", p.Database(), p.RetentionPolicy()); err != nil {
 		return err
 	}
 	if _, err := w.Write(p.Bytes(precision)); err != nil {

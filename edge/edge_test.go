@@ -27,17 +27,17 @@ var point = edge.NewPointMessage(
 	db,
 	rp,
 	groupDims,
-	models.Tags{
-		"tag1": "value1",
-		"tag2": "value2",
-		"tag3": "value3",
-		"tag4": "value4",
-	},
 	models.Fields{
 		"field1": 42,
 		"field2": 4.2,
 		"field3": 49,
 		"field4": 4.9,
+	},
+	models.Tags{
+		"tag1": "value1",
+		"tag2": "value2",
+		"tag3": "value3",
+		"tag4": "value4",
 	},
 	now,
 )

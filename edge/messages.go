@@ -2,8 +2,10 @@ package edge
 
 import (
 	"fmt"
+	"strconv"
 	"time"
 
+	imodels "github.com/influxdata/influxdb/models"
 	"github.com/influxdata/kapacitor/models"
 )
 
@@ -108,6 +110,8 @@ type PointMessage interface {
 	Dimensioner
 
 	FieldsTagsTimer
+
+	Bytes(precision string) []byte
 }
 
 type pointMessage struct {
@@ -130,8 +134,8 @@ func NewPointMessage(
 	database,
 	retentionPolicy string,
 	dimensions models.Dimensions,
-	tags models.Tags,
 	fields models.Fields,
+	tags models.Tags,
 	time time.Time) PointMessage {
 	pm := &pointMessage{
 		name:            name,
@@ -217,6 +221,33 @@ func (pm *pointMessage) Time() time.Time {
 }
 func (pm *pointMessage) SetTime(time time.Time) {
 	pm.time = time
+}
+
+// Returns byte array of a line protocol representation of the point
+func (pm *pointMessage) Bytes(precision string) []byte {
+	key := imodels.MakeKey([]byte(pm.name), imodels.NewTags(pm.tags))
+	fields := imodels.Fields(pm.fields).MarshalBinary()
+	kl := len(key)
+	fl := len(fields)
+	var bytes []byte
+
+	if pm.time.IsZero() {
+		bytes = make([]byte, fl+kl+1)
+		copy(bytes, key)
+		bytes[kl] = ' '
+		copy(bytes[kl+1:], fields)
+	} else {
+		timeStr := strconv.FormatInt(pm.time.UnixNano()/imodels.GetPrecisionMultiplier(precision), 10)
+		tl := len(timeStr)
+		bytes = make([]byte, fl+kl+tl+2)
+		copy(bytes, key)
+		bytes[kl] = ' '
+		copy(bytes[kl+1:], fields)
+		bytes[kl+fl+1] = ' '
+		copy(bytes[kl+fl+2:], []byte(timeStr))
+	}
+
+	return bytes
 }
 
 // BeginBatchMessage marks the beginning of a batch of points.

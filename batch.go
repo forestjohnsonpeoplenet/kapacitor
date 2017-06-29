@@ -9,6 +9,7 @@ import (
 
 	"github.com/gorhill/cronexpr"
 	"github.com/influxdata/influxdb/influxql"
+	"github.com/influxdata/kapacitor/edge"
 	"github.com/influxdata/kapacitor/expvar"
 	"github.com/influxdata/kapacitor/influxdb"
 	"github.com/influxdata/kapacitor/models"
@@ -49,7 +50,7 @@ func (s *BatchNode) linkChild(c Node) error {
 	return nil
 }
 
-func (s *BatchNode) addParentEdge(in *Edge) {
+func (s *BatchNode) addParentEdge(in edge.StatsEdge) {
 	// Pass edges down to children
 	s.children[s.idx].addParentEdge(in)
 	s.idx++

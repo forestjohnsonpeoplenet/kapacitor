@@ -81,8 +81,8 @@ func (s *StatsNode) emit(now time.Time) error {
 		point := edge.NewPointMessage(
 			name, "", "",
 			stat.Dimensions,
-			stat.Tags,
 			stat.Fields,
+			stat.Tags,
 			t,
 		)
 		s.timer.Pause()
