@@ -1,11 +1,15 @@
 package edge
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"strconv"
 	"time"
 
 	imodels "github.com/influxdata/influxdb/models"
+	"github.com/influxdata/kapacitor/influxdb"
 	"github.com/influxdata/kapacitor/models"
 )
 
@@ -522,6 +526,166 @@ func (bb *bufferedBatchMessage) End() EndBatchMessage {
 }
 func (bb *bufferedBatchMessage) SetEnd(end EndBatchMessage) {
 	bb.end = end
+}
+
+type bufferedBatchMessageJSON struct {
+	Name   string                  `json:"name,omitempty"`
+	TMax   time.Time               `json:"tmax,omitempty"`
+	Group  models.GroupID          `json:"group,omitempty"`
+	ByName bool                    `json:"byname,omitempty"`
+	Tags   models.Tags             `json:"tags,omitempty"`
+	Points []batchPointMessageJSON `json:"points,omitempty"`
+}
+
+type batchPointMessageJSON struct {
+	Fields models.Fields `json:"fields"`
+	Tags   models.Tags   `json:"tags"`
+	Time   time.Time     `json:"time"`
+}
+
+type BufferedBatchMessageDecoder interface {
+	Decode() (BufferedBatchMessage, error)
+	More() bool
+}
+
+type bufferedBatchMessageDecoder struct {
+	dec *json.Decoder
+}
+
+func (d *bufferedBatchMessageDecoder) More() bool {
+	return d.dec.More()
+}
+
+func (d *bufferedBatchMessageDecoder) Decode() (BufferedBatchMessage, error) {
+	bb := &bufferedBatchMessage{
+		begin: new(beginBatchMessage),
+		end:   new(endBatchMessage),
+	}
+	err := d.dec.Decode(bb)
+	return bb, err
+}
+
+func NewBufferedBatchMessageDecoder(r io.Reader) BufferedBatchMessageDecoder {
+	return &bufferedBatchMessageDecoder{
+		dec: json.NewDecoder(r),
+	}
+}
+
+func (bb *bufferedBatchMessage) MarshalJSON() ([]byte, error) {
+	b := &bufferedBatchMessageJSON{
+		Name:   bb.begin.Name(),
+		TMax:   bb.end.TMax(),
+		Group:  bb.begin.GroupID(),
+		ByName: bb.begin.Dimensions().ByName,
+		Tags:   bb.begin.Tags(),
+		Points: make([]batchPointMessageJSON, len(bb.points)),
+	}
+	for i := range b.Points {
+		b.Points[i] = batchPointMessageJSON{
+			Fields: bb.points[i].Fields(),
+			Tags:   bb.points[i].Tags(),
+			Time:   bb.points[i].Time(),
+		}
+	}
+	return json.Marshal(b)
+}
+
+func (bb *bufferedBatchMessage) UnmarshalJSON(data []byte) error {
+	b := new(bufferedBatchMessageJSON)
+	json.Unmarshal(data, &b)
+	bb.begin.SetName(b.Name)
+	bb.begin.SetTags(b.Tags)
+	dims := bb.begin.Dimensions()
+	dims.ByName = b.ByName
+	bb.begin.SetDimensions(dims)
+	bb.begin.SetSizeHint(len(b.Points))
+	bb.points = make([]BatchPointMessage, len(b.Points))
+	for i := range bb.points {
+		tags := b.Points[i].Tags
+		if len(tags) == 0 {
+			tags = b.Tags
+		}
+		bb.points[i] = NewBatchPointMessage(
+			b.Points[i].Fields,
+			tags,
+			b.Points[i].Time.UTC(),
+		)
+	}
+	bb.end.SetTMax(b.TMax.UTC())
+	return nil
+}
+
+func ResultToBufferedBatches(res influxdb.Result, groupByName bool) ([]BufferedBatchMessage, error) {
+	if res.Err != "" {
+		return nil, errors.New(res.Err)
+	}
+	batches := make([]BufferedBatchMessage, 0, len(res.Series))
+	dims := models.Dimensions{
+		ByName: groupByName,
+	}
+	for _, series := range res.Series {
+		dims.TagNames = models.SortedKeys(series.Tags)
+		b := NewBufferedBatchMessage(
+			NewBeginBatchMessage(
+				series.Name,
+				series.Tags,
+				dims,
+				len(series.Values),
+			),
+			make([]BatchPointMessage, 0, len(series.Values)),
+			NewEndBatchMessage(time.Time{}),
+		)
+		points := b.Points()
+
+		for _, v := range series.Values {
+			fields := make(models.Fields)
+			var t time.Time
+			for i, c := range series.Columns {
+				if c == "time" {
+					tStr, ok := v[i].(string)
+					if !ok {
+						return nil, fmt.Errorf("unexpected time value: %v", v[i])
+					}
+					var err error
+					t, err = time.Parse(time.RFC3339Nano, tStr)
+					if err != nil {
+						t, err = time.Parse(time.RFC3339, tStr)
+						if err != nil {
+							return nil, fmt.Errorf("unexpected time format: %v", err)
+						}
+					}
+				} else {
+					value := v[i]
+					if n, ok := value.(json.Number); ok {
+						f, err := n.Float64()
+						if err == nil {
+							value = f
+						}
+					}
+					if value == nil {
+						continue
+					}
+					fields[c] = value
+				}
+			}
+			if len(fields) > 0 {
+				if t.After(b.End().TMax()) {
+					b.End().SetTMax(t.UTC())
+				}
+				points = append(
+					points,
+					NewBatchPointMessage(
+						fields,
+						series.Tags,
+						t.UTC(),
+					),
+				)
+			}
+			b.SetPoints(points)
+		}
+		batches = append(batches, b)
+	}
+	return batches, nil
 }
 
 // BarrierMessage indicates that no data older than the barrier time will arrive.

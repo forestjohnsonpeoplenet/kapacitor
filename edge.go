@@ -23,22 +23,6 @@ const (
 
 var ErrAborted = errors.New("edged aborted")
 
-type StreamCollector interface {
-	CollectPoint(edge.PointMessage) error
-	Close() error
-}
-
-type StreamEdge interface {
-	CollectPoint(edge.PointMessage) error
-	EmitPoint() (edge.PointMessage, bool)
-	Close() error
-}
-
-type BatchCollector interface {
-	CollectBatch(models.Batch) error
-	Close() error
-}
-
 type Edge struct {
 	edge.StatsEdge
 

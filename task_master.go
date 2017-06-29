@@ -445,7 +445,7 @@ func (tm *TaskMaster) StartTask(t *Task) (*ExecutingTask, error) {
 		for i := 0; i < count; i++ {
 			in := newEdge(t.ID, "batch", fmt.Sprintf("batch%d", i), pipeline.BatchEdge, defaultEdgeBufferSize, tm.LogService)
 			ins[i] = in
-			tm.batches[t.ID] = append(tm.batches[t.ID], NewLegacyEdge(in))
+			tm.batches[t.ID] = append(tm.batches[t.ID], &batchCollector{edge: in})
 		}
 	}
 
@@ -574,6 +574,17 @@ func (tm *TaskMaster) stream(name string) (StreamCollector, error) {
 		tm.runForking(se)
 	}()
 	return se, nil
+}
+
+type StreamCollector interface {
+	CollectPoint(edge.PointMessage) error
+	Close() error
+}
+
+type StreamEdge interface {
+	CollectPoint(edge.PointMessage) error
+	EmitPoint() (edge.PointMessage, bool)
+	Close() error
 }
 
 type streamEdge struct {
@@ -838,4 +849,20 @@ func (tml *TaskMasterLookup) Delete(tm *TaskMaster) {
 	tml.Lock()
 	defer tml.Unlock()
 	delete(tml.taskMasters, tm.id)
+}
+
+type BatchCollector interface {
+	CollectBatch(edge.BufferedBatchMessage) error
+	Close() error
+}
+
+type batchCollector struct {
+	edge edge.Edge
+}
+
+func (c *batchCollector) CollectBatch(batch edge.BufferedBatchMessage) error {
+	return c.edge.Collect(batch)
+}
+func (c *batchCollector) Close() error {
+	return c.edge.Close()
 }

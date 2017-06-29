@@ -1162,12 +1162,12 @@ func (r *Service) doLiveQueryReplay(id string, task *kapacitor.Task, clk clock.C
 			}
 			replayErrC = kapacitor.ReplayStreamFromChan(clk, source, stream, recTime)
 		case kapacitor.BatchTask:
-			source := make(chan models.Batch)
+			source := make(chan edge.BufferedBatchMessage)
 			go func() {
 				runErrC <- r.runQueryBatch(source, query, cluster)
 			}()
 			collectors := tm.BatchCollectors(task.ID)
-			replayErrC = kapacitor.ReplayBatchFromChan(clk, []<-chan models.Batch{source}, collectors, recTime)
+			replayErrC = kapacitor.ReplayBatchFromChan(clk, []<-chan edge.BufferedBatchMessage{source}, collectors, recTime)
 		}
 		for i := 0; i < 2; i++ {
 			var err error
@@ -1332,7 +1332,7 @@ func (s *Service) doRecordBatch(dataSource DataSource, t *kapacitor.Task, start,
 	return nil
 }
 
-func (s *Service) startRecordBatch(t *kapacitor.Task, start, stop time.Time) ([]<-chan models.Batch, <-chan error, error) {
+func (s *Service) startRecordBatch(t *kapacitor.Task, start, stop time.Time) ([]<-chan edge.BufferedBatchMessage, <-chan error, error) {
 	// We do not open the task master so it does not need to be closed
 	et, err := kapacitor.NewExecutingTask(s.TaskMaster.New(""), t)
 	if err != nil {
@@ -1348,11 +1348,11 @@ func (s *Service) startRecordBatch(t *kapacitor.Task, start, stop time.Time) ([]
 		return nil, nil, errors.New("InfluxDB not configured, cannot record batch query")
 	}
 
-	sources := make([]<-chan models.Batch, len(batches))
+	sources := make([]<-chan edge.BufferedBatchMessage, len(batches))
 	errors := make(chan error, len(batches))
 
 	for batchIndex, batchQueries := range batches {
-		source := make(chan models.Batch)
+		source := make(chan edge.BufferedBatchMessage)
 		sources[batchIndex] = source
 		go func(cluster string, queries []*kapacitor.Query, groupByName bool) {
 			defer close(source)
@@ -1376,15 +1376,15 @@ func (s *Service) startRecordBatch(t *kapacitor.Task, start, stop time.Time) ([]
 					return
 				}
 				for _, res := range resp.Results {
-					batches, err := models.ResultToBatches(res, groupByName)
+					batches, err := edge.ResultToBufferedBatches(res, groupByName)
 					if err != nil {
 						errors <- err
 						return
 					}
 					for _, b := range batches {
 						// Set stop time based off query bounds
-						if b.TMax.IsZero() || !q.IsGroupedByTime() {
-							b.TMax = q.StopTime()
+						if b.End().TMax().IsZero() || !q.IsGroupedByTime() {
+							b.End().SetTMax(q.StopTime())
 						}
 						source <- b
 					}
@@ -1407,7 +1407,7 @@ func (s *Service) startRecordBatch(t *kapacitor.Task, start, stop time.Time) ([]
 	return sources, errC, nil
 }
 
-func (r *Service) saveBatchRecording(dataSource DataSource, sources []<-chan models.Batch) error {
+func (r *Service) saveBatchRecording(dataSource DataSource, sources []<-chan edge.BufferedBatchMessage) error {
 	archiver, err := dataSource.BatchArchiver()
 	if err != nil {
 		return err
@@ -1437,7 +1437,7 @@ func (r *Service) doRecordQuery(dataSource DataSource, q string, typ RecordingTy
 			errC <- r.saveStreamQuery(dataSource, points, precision)
 		}()
 	case BatchRecording:
-		batches := make(chan models.Batch)
+		batches := make(chan edge.BufferedBatchMessage)
 		go func() {
 			errC <- r.runQueryBatch(batches, q, cluster)
 		}()
@@ -1526,7 +1526,7 @@ func (r *Service) runQueryStream(source chan<- edge.PointMessage, q, cluster str
 	return nil
 }
 
-func (r *Service) runQueryBatch(source chan<- models.Batch, q string, cluster string) error {
+func (r *Service) runQueryBatch(source chan<- edge.BufferedBatchMessage, q string, cluster string) error {
 	defer close(source)
 	_, resp, err := r.execQuery(q, cluster)
 	if err != nil {
@@ -1534,7 +1534,7 @@ func (r *Service) runQueryBatch(source chan<- models.Batch, q string, cluster st
 	}
 	// Write results to sources
 	for _, res := range resp.Results {
-		batches, err := models.ResultToBatches(res, false)
+		batches, err := edge.ResultToBufferedBatches(res, false)
 		if err != nil {
 			return err
 		}
@@ -1545,7 +1545,7 @@ func (r *Service) runQueryBatch(source chan<- models.Batch, q string, cluster st
 	return nil
 }
 
-func (r *Service) saveBatchQuery(dataSource DataSource, batches <-chan models.Batch) error {
+func (r *Service) saveBatchQuery(dataSource DataSource, batches <-chan edge.BufferedBatchMessage) error {
 	archiver, err := dataSource.BatchArchiver()
 	if err != nil {
 		return err
