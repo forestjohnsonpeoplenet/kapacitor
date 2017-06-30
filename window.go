@@ -202,7 +202,7 @@ func (w *windowByTime) batch(tmax time.Time) edge.BufferedBatchMessage {
 		edge.NewBeginBatchMessage(
 			w.name,
 			w.group.Tags,
-			w.group.Dims,
+			w.group.Dims.ByName,
 			len(points),
 		),
 		points,
@@ -401,7 +401,7 @@ func (w *windowByCount) batch() edge.BufferedBatchMessage {
 		edge.NewBeginBatchMessage(
 			w.name,
 			w.group.Tags,
-			w.group.Dims,
+			w.group.Dims.ByName,
 			len(points),
 		),
 		points,

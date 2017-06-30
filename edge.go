@@ -227,7 +227,7 @@ func (e *LegacyEdge) CollectBatch(b models.Batch) error {
 	begin := edge.NewBeginBatchMessage(
 		b.Name,
 		b.Tags,
-		b.PointDimensions(),
+		b.ByName,
 		len(b.Points),
 	)
 	points := make([]edge.BatchPointMessage, begin.SizeHint())

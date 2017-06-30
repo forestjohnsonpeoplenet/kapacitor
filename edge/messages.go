@@ -288,14 +288,19 @@ type beginBatchMessage struct {
 func NewBeginBatchMessage(
 	name string,
 	tags models.Tags,
-	dimensions models.Dimensions,
+	byName bool,
 	sizeHint int,
 ) BeginBatchMessage {
+	dimensions := models.Dimensions{
+		TagNames: models.SortedKeys(tags),
+		ByName:   byName,
+	}
+	groupID := models.ToGroupID(name, tags, dimensions)
 	bb := &beginBatchMessage{
 		name:       name,
 		tags:       tags,
 		dimensions: dimensions,
-		groupID:    models.ToGroupID(name, tags, dimensions),
+		groupID:    groupID,
 		sizeHint:   sizeHint,
 	}
 	return bb
@@ -620,16 +625,12 @@ func ResultToBufferedBatches(res influxdb.Result, groupByName bool) ([]BufferedB
 		return nil, errors.New(res.Err)
 	}
 	batches := make([]BufferedBatchMessage, 0, len(res.Series))
-	dims := models.Dimensions{
-		ByName: groupByName,
-	}
 	for _, series := range res.Series {
-		dims.TagNames = models.SortedKeys(series.Tags)
 		b := NewBufferedBatchMessage(
 			NewBeginBatchMessage(
 				series.Name,
 				series.Tags,
-				dims,
+				groupByName,
 				len(series.Values),
 			),
 			make([]BatchPointMessage, 0, len(series.Values)),
@@ -681,8 +682,9 @@ func ResultToBufferedBatches(res influxdb.Result, groupByName bool) ([]BufferedB
 					),
 				)
 			}
-			b.SetPoints(points)
 		}
+		b.Begin().SetSizeHint(len(points))
+		b.SetPoints(points)
 		batches = append(batches, b)
 	}
 	return batches, nil

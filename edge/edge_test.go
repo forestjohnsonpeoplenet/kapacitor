@@ -46,7 +46,7 @@ var batch = edge.NewBufferedBatchMessage(
 	edge.NewBeginBatchMessage(
 		name,
 		groupTags,
-		groupDims,
+		groupDims.ByName,
 		2,
 	),
 	[]edge.BatchPointMessage{
