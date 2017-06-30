@@ -23,7 +23,7 @@ type bufferingReceiver struct {
 }
 
 func (r *bufferingReceiver) BeginBatch(begin BeginBatchMessage) error {
-	r.begin = begin
+	r.begin = begin.ShallowCopy()
 	r.points = make([]BatchPointMessage, 0, begin.SizeHint())
 	return nil
 }
@@ -34,6 +34,7 @@ func (r *bufferingReceiver) BatchPoint(bp BatchPointMessage) error {
 }
 
 func (r *bufferingReceiver) EndBatch(end EndBatchMessage) error {
+	r.begin.SetSizeHint(len(r.points))
 	buffer := NewBufferedBatchMessage(r.begin, r.points, end)
 	return r.r.BufferedBatch(buffer)
 }

@@ -342,6 +342,7 @@ func (bb *beginBatchMessage) Tags() models.Tags {
 func (bb *beginBatchMessage) SetTags(tags models.Tags) {
 	bb.tags = tags
 	bb.dimensions.TagNames = models.SortedKeys(tags)
+	bb.groupID = models.ToGroupID(bb.name, bb.tags, bb.dimensions)
 }
 
 func (bb *beginBatchMessage) Dimensions() models.Dimensions {
