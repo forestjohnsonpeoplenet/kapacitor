@@ -26,12 +26,32 @@ const (
 type ErrWrongFuncSignature struct {
 	Name           string
 	DomainProvided Domain
+	ArgLiterals    []string
 	Func           Func
 }
 
 func (e ErrWrongFuncSignature) Error() string {
-	return fmt.Sprintf("Cannot call function \"%s\" with args signature %s, available signatures are %s.",
-		e.Name, e.DomainProvided, FuncDomains(e.Func))
+	var argStringer fmt.Stringer = &argDomain{args: e.ArgLiterals, domain: e.DomainProvided}
+	if e.ArgLiterals == nil {
+		argStringer = e.DomainProvided
+	}
+	return fmt.Sprintf("Cannot call function \"%s\" with args %s, available signatures are %s.",
+		e.Name, argStringer, FuncDomains(e.Func))
+}
+
+type argDomain struct {
+	args   []string
+	domain Domain
+}
+
+func (a *argDomain) String() string {
+	input := []string{}
+	for j, el := range a.args {
+		t := a.domain[j]
+		input = append(input, fmt.Sprintf("%s: %s", el, t))
+	}
+
+	return "(" + strings.Join(input, ",") + ")"
 }
 
 var ErrNotFloat = errors.New("value is not a float")

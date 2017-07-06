@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/influxdata/kapacitor/tick/ast"
+	"github.com/pkg/errors"
 )
 
 type EvalFunctionNode struct {
@@ -32,6 +33,15 @@ func NewEvalFunctionNode(funcNode *ast.FunctionNode) (*EvalFunctionNode, error) 
 	return evalFuncNode, nil
 }
 
+func (n *EvalFunctionNode) String() string {
+	args := []string{}
+	for _, argEvaluator := range n.argsEvaluators {
+		args = append(args, fmt.Sprintf("%s", argEvaluator))
+	}
+
+	return n.funcName + "(" + strings.Join(args, ", ") + ")"
+}
+
 func (n *EvalFunctionNode) Type(scope ReadOnlyScope) (ast.ValueType, error) {
 	f := lookupFunc(n.funcName, builtinFuncs, scope)
 	if f == nil {
@@ -49,12 +59,17 @@ func (n *EvalFunctionNode) Type(scope ReadOnlyScope) (ast.ValueType, error) {
 	}
 
 	if gotLen, expLen := len(n.argsEvaluators), len(domain); gotLen > expLen {
-		return ast.InvalidType, ErrWrongFuncSignature{Name: n.funcName, DomainProvided: domain, Func: f}
+		err := ErrWrongFuncSignature{Name: n.funcName, DomainProvided: domain, Func: f}
+		return ast.InvalidType, errors.Wrapf(err, "too many arguments provided")
 	}
 
 	retType, ok := signature[domain]
 	if !ok {
-		return ast.InvalidType, ErrWrongFuncSignature{Name: n.funcName, DomainProvided: domain, Func: f}
+		args := []string{}
+		for _, argEvaluator := range n.argsEvaluators {
+			args = append(args, fmt.Sprintf("%s", argEvaluator))
+		}
+		return ast.InvalidType, ErrWrongFuncSignature{Name: n.funcName, ArgLiterals: args, DomainProvided: domain, Func: f}
 	}
 
 	return retType, nil
