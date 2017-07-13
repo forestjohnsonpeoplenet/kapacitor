@@ -1383,8 +1383,8 @@ func (s *Service) startRecordBatch(t *kapacitor.Task, start, stop time.Time) ([]
 					}
 					for _, b := range batches {
 						// Set stop time based off query bounds
-						if b.End().TMax().IsZero() || !q.IsGroupedByTime() {
-							b.End().SetTMax(q.StopTime())
+						if b.Begin().TMax().IsZero() || !q.IsGroupedByTime() {
+							b.Begin().SetTMax(q.StopTime())
 						}
 						source <- b
 					}

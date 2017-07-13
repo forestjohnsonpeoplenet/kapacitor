@@ -182,12 +182,12 @@ func replayBatchFromChan(clck clock.Clock, batches <-chan edge.BufferedBatchMess
 	for b := range batches {
 		if len(b.Points()) == 0 {
 			// Emit empty batch
-			if b.End().TMax().IsZero() {
+			if b.Begin().TMax().IsZero() {
 				// Set tmax to last batch if not set.
-				b.End().SetTMax(tmax)
+				b.Begin().SetTMax(tmax)
 			} else {
-				tmax = b.End().TMax().UTC()
-				b.End().SetTMax(tmax)
+				tmax = b.Begin().TMax().UTC()
+				b.Begin().SetTMax(tmax)
 			}
 			if err := collector.CollectBatch(b); err != nil {
 				return err
@@ -209,11 +209,11 @@ func replayBatchFromChan(clck clock.Clock, batches <-chan edge.BufferedBatchMess
 			lastTime = points[len(points)-1].Time().Add(diff).UTC()
 		}
 		clck.Until(lastTime)
-		if lpt := points[len(points)-1].Time(); b.End().TMax().Before(lpt) {
-			b.End().SetTMax(lpt)
+		if lpt := points[len(points)-1].Time(); b.Begin().TMax().Before(lpt) {
+			b.Begin().SetTMax(lpt)
 		}
-		tmax = b.End().TMax().UTC()
-		b.End().SetTMax(tmax)
+		tmax = b.Begin().TMax().UTC()
+		b.Begin().SetTMax(tmax)
 		if err := collector.CollectBatch(b); err != nil {
 			return err
 		}

@@ -47,6 +47,7 @@ var batch = edge.NewBufferedBatchMessage(
 		name,
 		groupTags,
 		groupDims.ByName,
+		now,
 		2,
 	),
 	[]edge.BatchPointMessage{
@@ -81,7 +82,7 @@ var batch = edge.NewBufferedBatchMessage(
 			now,
 		),
 	},
-	edge.NewEndBatchMessage(now),
+	edge.NewEndBatchMessage(),
 )
 
 func TestEdge_CollectPoint(t *testing.T) {

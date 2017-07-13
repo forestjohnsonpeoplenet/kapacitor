@@ -268,6 +268,9 @@ type BeginBatchMessage interface {
 	Dimensioner
 	SetTagsAndDimensions(models.Tags, models.Dimensions)
 
+	TMax() time.Time
+	SetTMax(time.Time)
+
 	// SizeHint provides a hint about the size of the batch to come.
 	// If non-zero expect a batch with SizeHint points,
 	// otherwise an unknown number of points are coming.
@@ -280,6 +283,7 @@ type beginBatchMessage struct {
 	groupID    models.GroupID
 	tags       models.Tags
 	dimensions models.Dimensions
+	tmax       time.Time
 	// If non-zero expect a batch with SizeHint points,
 	// otherwise an unknown number of points are coming.
 	sizeHint int
@@ -289,6 +293,7 @@ func NewBeginBatchMessage(
 	name string,
 	tags models.Tags,
 	byName bool,
+	tmax time.Time,
 	sizeHint int,
 ) BeginBatchMessage {
 	dimensions := models.Dimensions{
@@ -301,6 +306,7 @@ func NewBeginBatchMessage(
 		tags:       tags,
 		dimensions: dimensions,
 		groupID:    groupID,
+		tmax:       tmax,
 		sizeHint:   sizeHint,
 	}
 	return bb
@@ -368,6 +374,12 @@ func (bb *beginBatchMessage) SetTagsAndDimensions(tags models.Tags, dimensions m
 	bb.tags = newTags
 	bb.dimensions = dimensions
 	bb.groupID = models.ToGroupID(bb.name, bb.tags, bb.dimensions)
+}
+func (bb *beginBatchMessage) TMax() time.Time {
+	return bb.tmax
+}
+func (bb *beginBatchMessage) SetTMax(tmax time.Time) {
+	bb.tmax = tmax
 }
 
 func (bb *beginBatchMessage) SizeHint() int {
@@ -445,19 +457,13 @@ type EndBatchMessage interface {
 	Message
 
 	ShallowCopy() EndBatchMessage
-
-	TMax() time.Time
-	SetTMax(time.Time)
 }
 
 type endBatchMessage struct {
-	tmax time.Time
 }
 
-func NewEndBatchMessage(tmax time.Time) EndBatchMessage {
-	return &endBatchMessage{
-		tmax: tmax,
-	}
+func NewEndBatchMessage() EndBatchMessage {
+	return &endBatchMessage{}
 }
 
 func (*endBatchMessage) Type() MessageType {
@@ -467,12 +473,6 @@ func (eb *endBatchMessage) ShallowCopy() EndBatchMessage {
 	c := new(endBatchMessage)
 	*c = *eb
 	return c
-}
-func (eb *endBatchMessage) TMax() time.Time {
-	return eb.tmax
-}
-func (eb *endBatchMessage) SetTMax(tmax time.Time) {
-	eb.tmax = tmax
 }
 
 // BufferedBatchMessage is a message containing all data for a single batch.
@@ -580,7 +580,7 @@ func NewBufferedBatchMessageDecoder(r io.Reader) BufferedBatchMessageDecoder {
 func (bb *bufferedBatchMessage) MarshalJSON() ([]byte, error) {
 	b := &bufferedBatchMessageJSON{
 		Name:   bb.begin.Name(),
-		TMax:   bb.end.TMax(),
+		TMax:   bb.begin.TMax(),
 		Group:  bb.begin.GroupID(),
 		ByName: bb.begin.Dimensions().ByName,
 		Tags:   bb.begin.Tags(),
@@ -604,6 +604,7 @@ func (bb *bufferedBatchMessage) UnmarshalJSON(data []byte) error {
 	dims := bb.begin.Dimensions()
 	dims.ByName = b.ByName
 	bb.begin.SetDimensions(dims)
+	bb.begin.SetTMax(b.TMax.UTC())
 	bb.begin.SetSizeHint(len(b.Points))
 	bb.points = make([]BatchPointMessage, len(b.Points))
 	for i := range bb.points {
@@ -617,7 +618,6 @@ func (bb *bufferedBatchMessage) UnmarshalJSON(data []byte) error {
 			b.Points[i].Time.UTC(),
 		)
 	}
-	bb.end.SetTMax(b.TMax.UTC())
 	return nil
 }
 
@@ -632,10 +632,11 @@ func ResultToBufferedBatches(res influxdb.Result, groupByName bool) ([]BufferedB
 				series.Name,
 				series.Tags,
 				groupByName,
+				time.Time{},
 				len(series.Values),
 			),
 			make([]BatchPointMessage, 0, len(series.Values)),
-			NewEndBatchMessage(time.Time{}),
+			NewEndBatchMessage(),
 		)
 		points := b.Points()
 
@@ -671,8 +672,8 @@ func ResultToBufferedBatches(res influxdb.Result, groupByName bool) ([]BufferedB
 				}
 			}
 			if len(fields) > 0 {
-				if t.After(b.End().TMax()) {
-					b.End().SetTMax(t.UTC())
+				if t.After(b.Begin().TMax()) {
+					b.Begin().SetTMax(t.UTC())
 				}
 				points = append(
 					points,

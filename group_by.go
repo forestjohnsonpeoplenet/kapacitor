@@ -20,6 +20,9 @@ type GroupByNode struct {
 	byName   bool
 	tagNames []string
 
+	begin      edge.BeginBatchMessage
+	dimensions models.Dimensions
+
 	allDimensions bool
 
 	mu       sync.RWMutex
@@ -52,7 +55,7 @@ func (g *GroupByNode) runGroupBy([]byte) error {
 
 	consumer := edge.NewConsumerWithReceiver(
 		g.ins[0],
-		edge.NewReceiverFromBufferedReceiver(g),
+		g,
 	)
 	return consumer.Consume()
 }
@@ -73,36 +76,47 @@ func (g *GroupByNode) Point(p edge.PointMessage) error {
 	return nil
 }
 
-func (g *GroupByNode) BufferedBatch(batch edge.BufferedBatchMessage) error {
+func (g *GroupByNode) BeginBatch(begin edge.BeginBatchMessage) error {
 	g.timer.Start()
 	defer g.timer.Stop()
 
-	g.emit(batch.End().TMax())
+	g.emit(begin.TMax())
 
-	dimensions := batch.Begin().Dimensions()
-	dimensions.ByName = dimensions.ByName || g.byName
+	g.begin = begin
+	g.dimensions = begin.Dimensions()
+	g.dimensions.ByName = g.dimensions.ByName || g.byName
 
-	for _, bp := range batch.Points() {
-		dimensions.TagNames = computeTagNames(bp.Tags(), g.allDimensions, g.tagNames, g.g.ExcludedDimensions)
-		groupID := models.ToGroupID(batch.Begin().Name(), bp.Tags(), dimensions)
-		group, ok := g.groups[groupID]
-		if !ok {
-			// Create new begin message
-			newBegin := batch.Begin().ShallowCopy()
-			newBegin.SetTagsAndDimensions(bp.Tags(), dimensions)
+	return nil
+}
 
-			// Create buffer for group batch
-			group = edge.NewBufferedBatchMessage(
-				newBegin,
-				make([]edge.BatchPointMessage, 0, newBegin.SizeHint()),
-				batch.End(),
-			)
-			g.mu.Lock()
-			g.groups[groupID] = group
-			g.mu.Unlock()
-		}
-		group.SetPoints(append(group.Points(), bp))
+func (g *GroupByNode) BatchPoint(bp edge.BatchPointMessage) error {
+	g.timer.Start()
+	defer g.timer.Stop()
+
+	g.dimensions.TagNames = computeTagNames(bp.Tags(), g.allDimensions, g.tagNames, g.g.ExcludedDimensions)
+	groupID := models.ToGroupID(g.begin.Name(), bp.Tags(), g.dimensions)
+	group, ok := g.groups[groupID]
+	if !ok {
+		// Create new begin message
+		newBegin := g.begin.ShallowCopy()
+		newBegin.SetTagsAndDimensions(bp.Tags(), g.dimensions)
+
+		// Create buffer for group batch
+		group = edge.NewBufferedBatchMessage(
+			newBegin,
+			make([]edge.BatchPointMessage, 0, newBegin.SizeHint()),
+			edge.NewEndBatchMessage(),
+		)
+		g.mu.Lock()
+		g.groups[groupID] = group
+		g.mu.Unlock()
 	}
+	group.SetPoints(append(group.Points(), bp))
+
+	return nil
+}
+
+func (g *GroupByNode) EndBatch(end edge.EndBatchMessage) error {
 	return nil
 }
 

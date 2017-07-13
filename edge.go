@@ -160,6 +160,7 @@ BEGIN:
 			b.Group = msg.GroupID()
 			b.Tags = msg.Tags()
 			b.ByName = msg.Dimensions().ByName
+			b.TMax = msg.TMax()
 			b.Points = make([]models.BatchPoint, 0, msg.SizeHint())
 			break BEGIN
 		case edge.BufferedBatchMessage:
@@ -168,7 +169,7 @@ BEGIN:
 			b.Group = begin.GroupID()
 			b.Tags = begin.Tags()
 			b.ByName = begin.Dimensions().ByName
-			b.TMax = msg.End().TMax()
+			b.TMax = msg.Begin().TMax()
 			points := msg.Points()
 			b.Points = make([]models.BatchPoint, len(points))
 			for i, bp := range points {
@@ -189,7 +190,6 @@ MESSAGES:
 	for m, ok := e.e.Emit(); ok; m, ok = e.e.Emit() {
 		switch msg := m.(type) {
 		case edge.EndBatchMessage:
-			b.TMax = msg.TMax()
 			finished = true
 			break MESSAGES
 		case edge.BatchPointMessage:
@@ -228,6 +228,7 @@ func (e *LegacyEdge) CollectBatch(b models.Batch) error {
 		b.Name,
 		b.Tags,
 		b.ByName,
+		b.TMax,
 		len(b.Points),
 	)
 	points := make([]edge.BatchPointMessage, begin.SizeHint())
@@ -238,6 +239,6 @@ func (e *LegacyEdge) CollectBatch(b models.Batch) error {
 			bp.Time,
 		)
 	}
-	end := edge.NewEndBatchMessage(b.TMax)
+	end := edge.NewEndBatchMessage()
 	return e.e.Collect(edge.NewBufferedBatchMessage(begin, points, end))
 }
