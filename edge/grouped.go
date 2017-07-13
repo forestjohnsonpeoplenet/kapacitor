@@ -91,6 +91,15 @@ func (c *groupedConsumer) EndBatch(end EndBatchMessage) error {
 	return err
 }
 
+func (c *groupedConsumer) BufferedBatch(batch BufferedBatchMessage) error {
+	begin := batch.Begin()
+	r, err := c.getOrCreateGroup(begin.GroupInfo(), begin)
+	if err != nil {
+		return err
+	}
+	return receiveBufferedBatch(r, batch)
+}
+
 func (c *groupedConsumer) Point(p PointMessage) error {
 	r, err := c.getOrCreateGroup(p.GroupInfo(), p)
 	if err != nil {

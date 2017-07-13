@@ -6,9 +6,23 @@ type timedForwardReceiver struct {
 	timer timer.Timer
 	r     ForwardReceiver
 }
+type timedForwardBufferedReceiver struct {
+	timedForwardReceiver
+	b ForwardBufferedReceiver
+}
 
 // NewTimedForwardReceiver creates a forward receiver which times the time spent in r.
 func NewTimedForwardReceiver(t timer.Timer, r ForwardReceiver) ForwardReceiver {
+	b, ok := r.(ForwardBufferedReceiver)
+	if ok {
+		return &timedForwardBufferedReceiver{
+			timedForwardReceiver: timedForwardReceiver{
+				timer: t,
+				r:     r,
+			},
+			b: b,
+		}
+	}
 	return &timedForwardReceiver{
 		timer: t,
 		r:     r,
@@ -32,6 +46,13 @@ func (tr *timedForwardReceiver) BatchPoint(bp BatchPointMessage) (m Message, err
 func (tr *timedForwardReceiver) EndBatch(end EndBatchMessage) (m Message, err error) {
 	tr.timer.Start()
 	m, err = tr.r.EndBatch(end)
+	tr.timer.Stop()
+	return
+}
+
+func (tr *timedForwardBufferedReceiver) BufferedBatch(batch BufferedBatchMessage) (m Message, err error) {
+	tr.timer.Start()
+	m, err = tr.b.BufferedBatch(batch)
 	tr.timer.Stop()
 	return
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sort"
 	"strconv"
 	"time"
 
@@ -116,6 +117,8 @@ type PointMessage interface {
 	FieldsTagsTimer
 
 	Bytes(precision string) []byte
+
+	ToResult() models.Result
 }
 
 type pointMessage struct {
@@ -252,6 +255,35 @@ func (pm *pointMessage) Bytes(precision string) []byte {
 	}
 
 	return bytes
+}
+
+func (pm *pointMessage) ToResult() models.Result {
+	row := &models.Row{
+		Name: pm.name,
+		Tags: pm.tags,
+	}
+	row.Columns = make([]string, len(pm.fields)+1)
+	row.Columns[0] = "time"
+	i := 1
+	for f := range pm.fields {
+		row.Columns[i] = f
+		i++
+	}
+	// Sort all columns but leave time as first
+	sort.Strings(row.Columns[1:])
+
+	row.Values = make([][]interface{}, 1)
+	row.Values[0] = make([]interface{}, len(row.Columns))
+	row.Values[0][0] = pm.time
+	for i, c := range row.Columns[1:] {
+		if v, ok := pm.fields[c]; ok {
+			row.Values[0][i+1] = v
+		}
+	}
+
+	return models.Result{
+		Series: models.Rows{row},
+	}
 }
 
 // BeginBatchMessage marks the beginning of a batch of points.
@@ -487,6 +519,8 @@ type BufferedBatchMessage interface {
 	SetPoints([]BatchPointMessage)
 	End() EndBatchMessage
 	SetEnd(EndBatchMessage)
+
+	ToResult() models.Result
 }
 
 type bufferedBatchMessage struct {
@@ -532,6 +566,47 @@ func (bb *bufferedBatchMessage) End() EndBatchMessage {
 }
 func (bb *bufferedBatchMessage) SetEnd(end EndBatchMessage) {
 	bb.end = end
+}
+
+func (bb *bufferedBatchMessage) ToResult() models.Result {
+	return models.Result{
+		Series: models.Rows{bb.toRow()},
+	}
+}
+func (bb *bufferedBatchMessage) toRow() (row *models.Row) {
+	row = &models.Row{
+		Name: bb.begin.Name(),
+		Tags: bb.begin.Tags(),
+	}
+	if len(bb.points) == 0 {
+		return
+	}
+	row.Columns = []string{"time"}
+	p := bb.points[0]
+	for f := range p.Fields() {
+		row.Columns = append(row.Columns, f)
+	}
+	// Append tags that are not on the batch
+	for t := range p.Tags() {
+		if _, ok := bb.begin.Tags()[t]; !ok {
+			row.Columns = append(row.Columns, t)
+		}
+	}
+	// Sort all columns but leave time as first
+	sort.Strings(row.Columns[1:])
+	row.Values = make([][]interface{}, len(bb.points))
+	for i, p := range bb.points {
+		row.Values[i] = make([]interface{}, len(row.Columns))
+		row.Values[i][0] = p.Time()
+		for j, c := range row.Columns[1:] {
+			if v, ok := p.Fields()[c]; ok {
+				row.Values[i][j+1] = v
+			} else if v, ok := p.Tags()[c]; ok {
+				row.Values[i][j+1] = v
+			}
+		}
+	}
+	return
 }
 
 type bufferedBatchMessageJSON struct {

@@ -10,6 +10,13 @@ type ForwardReceiver interface {
 	Barrier(b BarrierMessage) (Message, error)
 }
 
+// ForwardBufferedReceiver handles messages as they arrive and can return a message to be forwarded to output edges.
+// If a returned messages is nil, no message is forwarded.
+type ForwardBufferedReceiver interface {
+	ForwardReceiver
+	BufferedBatch(batch BufferedBatchMessage) (Message, error)
+}
+
 // NewReceiverFromForwardReceiverWithStats creates a new receiver from the provided list of stats edges and forward receiver.
 func NewReceiverFromForwardReceiverWithStats(outs []StatsEdge, r ForwardReceiver) Receiver {
 	os := make([]Edge, len(outs))
@@ -21,6 +28,16 @@ func NewReceiverFromForwardReceiverWithStats(outs []StatsEdge, r ForwardReceiver
 
 // NewReceiverFromForwardReceiver creates a new receiver from the provided list of edges and forward receiver.
 func NewReceiverFromForwardReceiver(outs []Edge, r ForwardReceiver) Receiver {
+	b, ok := r.(ForwardBufferedReceiver)
+	if ok {
+		return &forwardingBufferedReceiver{
+			forwardingReceiver: forwardingReceiver{
+				outs: outs,
+				r:    r,
+			},
+			b: b,
+		}
+	}
 	return &forwardingReceiver{
 		outs: outs,
 		r:    r,
@@ -32,6 +49,11 @@ type forwardingReceiver struct {
 	r    ForwardReceiver
 }
 
+type forwardingBufferedReceiver struct {
+	forwardingReceiver
+	b ForwardBufferedReceiver
+}
+
 func (fr *forwardingReceiver) BeginBatch(begin BeginBatchMessage) error {
 	return fr.forward(fr.r.BeginBatch(begin))
 }
@@ -41,6 +63,11 @@ func (fr *forwardingReceiver) BatchPoint(bp BatchPointMessage) error {
 func (fr *forwardingReceiver) EndBatch(end EndBatchMessage) error {
 	return fr.forward(fr.r.EndBatch(end))
 }
+
+func (fr *forwardingBufferedReceiver) BufferedBatch(batch BufferedBatchMessage) error {
+	return fr.forward(fr.b.BufferedBatch(batch))
+}
+
 func (fr *forwardingReceiver) Point(p PointMessage) error {
 	return fr.forward(fr.r.Point(p))
 }
