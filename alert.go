@@ -502,31 +502,12 @@ func (a *AlertNode) runAlert([]byte) error {
 	return nil
 }
 
-func (a *AlertNode) NewGroup(group edge.GroupInfo, first edge.Message) (edge.Receiver, error) {
-	var id string
-	var t time.Time
-	var err error
-	switch msg := first.(type) {
-	case edge.PointMessage:
-		id, err = a.renderID(msg.Name(), msg.GroupID(), msg.Tags())
-		if err != nil {
-			return nil, err
-		}
-		t = msg.Time()
-	case edge.BeginBatchMessage:
-		id, err = a.renderID(msg.Name(), msg.GroupID(), msg.Tags())
-		if err != nil {
-			return nil, err
-		}
-		t = msg.TMax()
-	case edge.BufferedBatchMessage:
-		begin := msg.Begin()
-		id, err = a.renderID(begin.Name(), begin.GroupID(), begin.Tags())
-		if err != nil {
-			return nil, err
-		}
-		t = begin.TMax()
+func (a *AlertNode) NewGroup(group edge.GroupInfo, first edge.PointMeta) (edge.Receiver, error) {
+	id, err := a.renderID(first.Name(), first.GroupID(), first.Tags())
+	if err != nil {
+		return nil, err
 	}
+	t := first.Time()
 
 	state := a.restoreEventState(id, t)
 
@@ -797,7 +778,7 @@ func (a *alertState) BufferedBatch(b edge.BufferedBatchMessage) (edge.Message, e
 	// Create alert Data
 	t := highestPoint.Time()
 	if a.n.a.AllFlag || l == alert.OK {
-		t = begin.TMax()
+		t = begin.Time()
 	}
 
 	a.addEvent(t, l)
@@ -900,7 +881,7 @@ func (a *alertState) Point(p edge.PointMessage) (edge.Message, error) {
 	return nil, nil
 }
 
-func (a *alertState) augmentTagsWithEventState(p edge.Tagger, eventState alert.EventState) {
+func (a *alertState) augmentTagsWithEventState(p edge.TagSetter, eventState alert.EventState) {
 	if a.n.a.LevelTag != "" || a.n.a.IdTag != "" {
 		tags := p.Tags().Copy()
 		if a.n.a.LevelTag != "" {
@@ -913,7 +894,7 @@ func (a *alertState) augmentTagsWithEventState(p edge.Tagger, eventState alert.E
 	}
 }
 
-func (a *alertState) augmentFieldsWithEventState(p edge.Fielder, eventState alert.EventState) {
+func (a *alertState) augmentFieldsWithEventState(p edge.FieldSetter, eventState alert.EventState) {
 	if a.n.a.LevelField != "" || a.n.a.IdField != "" || a.n.a.DurationField != "" || a.n.a.MessageField != "" {
 		fields := p.Fields().Copy()
 		if a.n.a.LevelField != "" {

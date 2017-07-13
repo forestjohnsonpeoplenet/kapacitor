@@ -41,7 +41,7 @@ func (stn *StateTrackingNode) runStateTracking(_ []byte) error {
 	return consumer.Consume()
 }
 
-func (stn *StateTrackingNode) NewGroup(group edge.GroupInfo, first edge.Message) (edge.Receiver, error) {
+func (stn *StateTrackingNode) NewGroup(group edge.GroupInfo, first edge.PointMeta) (edge.Receiver, error) {
 	return edge.NewReceiverFromForwardReceiverWithStats(
 		stn.outs,
 		edge.NewTimedForwardReceiver(stn.timer, stn.newGroup()),
@@ -98,7 +98,7 @@ func (g *stateTrackingGroup) Point(p edge.PointMessage) (edge.Message, error) {
 	return p, nil
 }
 
-func (g *stateTrackingGroup) track(p edge.FieldsTagsTimer) error {
+func (g *stateTrackingGroup) track(p edge.FieldsTagsTimeSetter) error {
 	pass, err := EvalPredicate(g.Expression, g.ScopePool, p.Time(), p.Fields(), p.Tags())
 	if err != nil {
 		return err

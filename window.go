@@ -35,7 +35,7 @@ func (w *WindowNode) runWindow([]byte) error {
 	return consumer.Consume()
 }
 
-func (w *WindowNode) NewGroup(group edge.GroupInfo, first edge.Message) (edge.Receiver, error) {
+func (w *WindowNode) NewGroup(group edge.GroupInfo, first edge.PointMeta) (edge.Receiver, error) {
 	r, err := w.newWindow(group, first)
 	if err != nil {
 		return nil, err
@@ -50,16 +50,12 @@ func (w *WindowNode) DeleteGroup(group models.GroupID) {
 	// Nothing to do
 }
 
-func (w *WindowNode) newWindow(group edge.GroupInfo, first edge.Message) (edge.ForwardReceiver, error) {
-	p, ok := first.(edge.PointMessage)
-	if !ok {
-		return nil, fmt.Errorf("window only accepts stream edges, something went wrong got message of type %v", first.Type())
-	}
+func (w *WindowNode) newWindow(group edge.GroupInfo, first edge.PointMeta) (edge.ForwardReceiver, error) {
 	switch {
 	case w.w.Period != 0:
 		return newWindowByTime(
-			p.Name(),
-			p.Time(),
+			first.Name(),
+			first.Time(),
 			group,
 			w.w.Period,
 			w.w.Every,
@@ -69,7 +65,7 @@ func (w *WindowNode) newWindow(group edge.GroupInfo, first edge.Message) (edge.F
 		), nil
 	case w.w.PeriodCount != 0:
 		return newWindowByCount(
-			p.Name(),
+			first.Name(),
 			group,
 			int(w.w.PeriodCount),
 			int(w.w.EveryCount),

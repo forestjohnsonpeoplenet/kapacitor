@@ -80,7 +80,7 @@ func (g *GroupByNode) BeginBatch(begin edge.BeginBatchMessage) error {
 	g.timer.Start()
 	defer g.timer.Stop()
 
-	g.emit(begin.TMax())
+	g.emit(begin.Time())
 
 	g.begin = begin
 	g.dimensions = begin.Dimensions()

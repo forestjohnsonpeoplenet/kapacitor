@@ -36,35 +36,59 @@ type GroupInfoer interface {
 	GroupInfo() GroupInfo
 }
 
-type Namer interface {
+type NameGetter interface {
 	Name() string
+}
+type NameSetter interface {
+	NameGetter
 	SetName(string)
 }
 
-type Dimensioner interface {
+type DimensionGetter interface {
 	Dimensions() models.Dimensions
+}
+type DimensionSetter interface {
+	DimensionGetter
 	SetDimensions(models.Dimensions)
 }
 
-type Timer interface {
+type TimeGetter interface {
 	Time() time.Time
+}
+type TimeSetter interface {
+	TimeGetter
 	SetTime(time.Time)
 }
 
-type Fielder interface {
+type FieldGetter interface {
 	Fields() models.Fields
+}
+type FieldSetter interface {
+	FieldGetter
 	SetFields(models.Fields)
 }
 
-type Tagger interface {
+type TagGetter interface {
 	Tags() models.Tags
+}
+type TagSetter interface {
+	TagGetter
 	SetTags(models.Tags)
 }
 
-type FieldsTagsTimer interface {
-	Fielder
-	Tagger
-	Timer
+type FieldsTagsTimeSetter interface {
+	FieldSetter
+	TagSetter
+	TimeSetter
+}
+
+// PointMeta is the common read interfaces of point and batch messages.
+type PointMeta interface {
+	NameGetter
+	GroupInfoer
+	DimensionGetter
+	TagGetter
+	TimeGetter
 }
 
 type MessageType int
@@ -103,7 +127,7 @@ type PointMessage interface {
 
 	ShallowCopy() PointMessage
 
-	Namer
+	NameSetter
 
 	Database() string
 	SetDatabase(string)
@@ -112,9 +136,9 @@ type PointMessage interface {
 
 	GroupInfoer
 
-	Dimensioner
+	DimensionSetter
 
-	FieldsTagsTimer
+	FieldsTagsTimeSetter
 
 	Bytes(precision string) []byte
 
@@ -293,15 +317,15 @@ type BeginBatchMessage interface {
 
 	ShallowCopy() BeginBatchMessage
 
-	Namer
+	NameSetter
 
 	GroupInfoer
-	Tagger
-	Dimensioner
+	TagSetter
+	DimensionSetter
 	SetTagsAndDimensions(models.Tags, models.Dimensions)
 
-	TMax() time.Time
-	SetTMax(time.Time)
+	// Time is the maximum time of any point in the batch
+	TimeSetter
 
 	// SizeHint provides a hint about the size of the batch to come.
 	// If non-zero expect a batch with SizeHint points,
@@ -407,10 +431,10 @@ func (bb *beginBatchMessage) SetTagsAndDimensions(tags models.Tags, dimensions m
 	bb.dimensions = dimensions
 	bb.groupID = models.ToGroupID(bb.name, bb.tags, bb.dimensions)
 }
-func (bb *beginBatchMessage) TMax() time.Time {
+func (bb *beginBatchMessage) Time() time.Time {
 	return bb.tmax
 }
-func (bb *beginBatchMessage) SetTMax(tmax time.Time) {
+func (bb *beginBatchMessage) SetTime(tmax time.Time) {
 	bb.tmax = tmax
 }
 
@@ -427,7 +451,7 @@ type BatchPointMessage interface {
 
 	ShallowCopy() BatchPointMessage
 
-	FieldsTagsTimer
+	FieldsTagsTimeSetter
 }
 
 type batchPointMessage struct {
@@ -515,8 +539,13 @@ type BufferedBatchMessage interface {
 
 	Begin() BeginBatchMessage
 	SetBegin(BeginBatchMessage)
+
+	// Expose common read interfaces of begin and point messages.
+	PointMeta
+
 	Points() []BatchPointMessage
 	SetPoints([]BatchPointMessage)
+
 	End() EndBatchMessage
 	SetEnd(EndBatchMessage)
 
@@ -555,6 +584,26 @@ func (bb *bufferedBatchMessage) Begin() BeginBatchMessage {
 func (bb *bufferedBatchMessage) SetBegin(begin BeginBatchMessage) {
 	bb.begin = begin
 }
+
+func (bb *bufferedBatchMessage) Name() string {
+	return bb.begin.Name()
+}
+func (bb *bufferedBatchMessage) GroupID() models.GroupID {
+	return bb.begin.GroupID()
+}
+func (bb *bufferedBatchMessage) GroupInfo() GroupInfo {
+	return bb.begin.GroupInfo()
+}
+func (bb *bufferedBatchMessage) Dimensions() models.Dimensions {
+	return bb.begin.Dimensions()
+}
+func (bb *bufferedBatchMessage) Tags() models.Tags {
+	return bb.begin.Tags()
+}
+func (bb *bufferedBatchMessage) Time() time.Time {
+	return bb.begin.Time()
+}
+
 func (bb *bufferedBatchMessage) Points() []BatchPointMessage {
 	return bb.points
 }
@@ -655,7 +704,7 @@ func NewBufferedBatchMessageDecoder(r io.Reader) BufferedBatchMessageDecoder {
 func (bb *bufferedBatchMessage) MarshalJSON() ([]byte, error) {
 	b := &bufferedBatchMessageJSON{
 		Name:   bb.begin.Name(),
-		TMax:   bb.begin.TMax(),
+		TMax:   bb.begin.Time(),
 		Group:  bb.begin.GroupID(),
 		ByName: bb.begin.Dimensions().ByName,
 		Tags:   bb.begin.Tags(),
@@ -679,7 +728,7 @@ func (bb *bufferedBatchMessage) UnmarshalJSON(data []byte) error {
 	dims := bb.begin.Dimensions()
 	dims.ByName = b.ByName
 	bb.begin.SetDimensions(dims)
-	bb.begin.SetTMax(b.TMax.UTC())
+	bb.begin.SetTime(b.TMax.UTC())
 	bb.begin.SetSizeHint(len(b.Points))
 	bb.points = make([]BatchPointMessage, len(b.Points))
 	for i := range bb.points {
@@ -747,8 +796,8 @@ func ResultToBufferedBatches(res influxdb.Result, groupByName bool) ([]BufferedB
 				}
 			}
 			if len(fields) > 0 {
-				if t.After(b.Begin().TMax()) {
-					b.Begin().SetTMax(t.UTC())
+				if t.After(b.Begin().Time()) {
+					b.Begin().SetTime(t.UTC())
 				}
 				points = append(
 					points,
@@ -771,7 +820,7 @@ func ResultToBufferedBatches(res influxdb.Result, groupByName bool) ([]BufferedB
 type BarrierMessage interface {
 	Message
 	ShallowCopy() BarrierMessage
-	Timer
+	TimeSetter
 }
 type barrierMessage struct {
 	time time.Time

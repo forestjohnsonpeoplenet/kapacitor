@@ -18,7 +18,7 @@ type GroupedConsumer interface {
 type GroupedReceiver interface {
 	// NewGroup signals that a new group has been discovered in the data.
 	// Information on the group and the message that first triggered its creation are provided.
-	NewGroup(group GroupInfo, first Message) (Receiver, error)
+	NewGroup(group GroupInfo, first PointMeta) (Receiver, error)
 	DeleteGroup(group models.GroupID)
 }
 
@@ -55,7 +55,7 @@ func (c *groupedConsumer) CardinalityVar() expvar.IntVar {
 	return c.cardinality
 }
 
-func (c *groupedConsumer) getOrCreateGroup(group GroupInfo, first Message) (Receiver, error) {
+func (c *groupedConsumer) getOrCreateGroup(group GroupInfo, first PointMeta) (Receiver, error) {
 	r, ok := c.groups[group.Group]
 	if !ok {
 		c.cardinality.Add(1)

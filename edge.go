@@ -160,7 +160,7 @@ BEGIN:
 			b.Group = msg.GroupID()
 			b.Tags = msg.Tags()
 			b.ByName = msg.Dimensions().ByName
-			b.TMax = msg.TMax()
+			b.TMax = msg.Time()
 			b.Points = make([]models.BatchPoint, 0, msg.SizeHint())
 			break BEGIN
 		case edge.BufferedBatchMessage:
@@ -169,7 +169,7 @@ BEGIN:
 			b.Group = begin.GroupID()
 			b.Tags = begin.Tags()
 			b.ByName = begin.Dimensions().ByName
-			b.TMax = msg.Begin().TMax()
+			b.TMax = msg.Begin().Time()
 			points := msg.Points()
 			b.Points = make([]models.BatchPoint, len(points))
 			for i, bp := range points {
