@@ -151,7 +151,7 @@ func (b *flattenBuffer) Point(p edge.PointMessage) error {
 	// Emit point
 	flatP := edge.NewPointMessage(
 		b.name, "", "",
-		b.groupInfo.Dims,
+		b.groupInfo.Dimensions,
 		fields,
 		b.groupInfo.Tags,
 		t,

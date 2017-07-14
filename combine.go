@@ -172,7 +172,7 @@ func (b *combineBuffer) combine() error {
 
 	p := edge.NewPointMessage(
 		b.name, "", "",
-		b.groupInfo.Dims,
+		b.groupInfo.Dimensions,
 		nil,
 		nil,
 		time.Time{},

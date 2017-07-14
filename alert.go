@@ -536,6 +536,7 @@ func (a *AlertNode) newAlertState() *alertState {
 	return &alertState{
 		history: make([]alert.Level, a.a.History),
 		n:       a,
+		buffer:  new(edge.BatchBuffer),
 	}
 }
 
@@ -714,7 +715,7 @@ func (a *AlertNode) event(
 type alertState struct {
 	n *AlertNode
 
-	buffer *edge.Buffer
+	buffer *edge.BatchBuffer
 
 	history []alert.Level
 	idx     int

@@ -151,7 +151,7 @@ func (e *batchStatsEdge) Collect(m Message) error {
 	case EndBatchMessage:
 		e.collected.Add(1)
 		e.incCollected(
-			e.currentCollectGroup.Group,
+			e.currentCollectGroup.ID,
 			func() GroupInfo { return e.currentCollectGroup },
 			e.collectSize,
 		)
@@ -179,7 +179,7 @@ func (e *batchStatsEdge) Emit() (m Message, ok bool) {
 		case EndBatchMessage:
 			e.emitted.Add(1)
 			e.incEmitted(
-				e.currentEmitGroup.Group,
+				e.currentEmitGroup.ID,
 				func() GroupInfo { return e.currentEmitGroup },
 				e.emitSize,
 			)

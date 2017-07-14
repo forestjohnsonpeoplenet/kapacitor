@@ -24,9 +24,9 @@ type GroupedReceiver interface {
 
 // GroupInfo identifies and contians information about a specific group.
 type GroupInfo struct {
-	Group models.GroupID
-	Tags  models.Tags
-	Dims  models.Dimensions
+	ID         models.GroupID
+	Tags       models.Tags
+	Dimensions models.Dimensions
 }
 
 type groupedConsumer struct {
@@ -56,14 +56,14 @@ func (c *groupedConsumer) CardinalityVar() expvar.IntVar {
 }
 
 func (c *groupedConsumer) getOrCreateGroup(group GroupInfo, first PointMeta) (Receiver, error) {
-	r, ok := c.groups[group.Group]
+	r, ok := c.groups[group.ID]
 	if !ok {
 		c.cardinality.Add(1)
 		recv, err := c.gr.NewGroup(group, first)
 		if err != nil {
 			return nil, err
 		}
-		c.groups[group.Group] = recv
+		c.groups[group.ID] = recv
 		r = recv
 	}
 	return r, nil

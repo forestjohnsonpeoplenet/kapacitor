@@ -22,7 +22,7 @@ type HTTPOutNode struct {
 	mu      sync.RWMutex
 	routes  []httpd.Route
 	result  *models.Result
-	indexes []*httpGroup
+	indexes []*httpOutGroup
 }
 
 // Create a new  HTTPOutNode which caches the most recent item and exposes it over the HTTP API.
@@ -107,20 +107,20 @@ func (h *HTTPOutNode) stopOut() {
 func (h *HTTPOutNode) NewGroup(group edge.GroupInfo, first edge.PointMeta) (edge.Receiver, error) {
 	return edge.NewReceiverFromForwardReceiverWithStats(
 		h.outs,
-		edge.NewTimedForwardReceiver(h.timer, h.newGroup(group.Group)),
+		edge.NewTimedForwardReceiver(h.timer, h.newGroup(group.ID)),
 	), nil
 }
 
-func (h *HTTPOutNode) newGroup(groupID models.GroupID) *httpGroup {
+func (h *HTTPOutNode) newGroup(groupID models.GroupID) *httpOutGroup {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
 	idx := len(h.result.Series)
 	h.result.Series = append(h.result.Series, nil)
-	g := &httpGroup{
+	g := &httpOutGroup{
 		n:      h,
 		idx:    idx,
-		buffer: edge.NewBuffer(),
+		buffer: new(edge.BatchBuffer),
 	}
 	h.indexes = append(h.indexes, g)
 	return g
@@ -148,37 +148,37 @@ func (h *HTTPOutNode) DeleteGroup(groupID models.GroupID) {
 	h.result.Series = filteredSeries
 }
 
-type httpGroup struct {
+type httpOutGroup struct {
 	n      *HTTPOutNode
 	id     models.GroupID
 	idx    int
-	buffer *edge.Buffer
+	buffer *edge.BatchBuffer
 }
 
-func (g *httpGroup) BeginBatch(begin edge.BeginBatchMessage) (edge.Message, error) {
+func (g *httpOutGroup) BeginBatch(begin edge.BeginBatchMessage) (edge.Message, error) {
 	return nil, g.buffer.BeginBatch(begin)
 }
 
-func (g *httpGroup) BatchPoint(bp edge.BatchPointMessage) (edge.Message, error) {
+func (g *httpOutGroup) BatchPoint(bp edge.BatchPointMessage) (edge.Message, error) {
 	return nil, g.buffer.BatchPoint(bp)
 }
 
-func (g *httpGroup) EndBatch(end edge.EndBatchMessage) (edge.Message, error) {
+func (g *httpOutGroup) EndBatch(end edge.EndBatchMessage) (edge.Message, error) {
 	return g.BufferedBatch(g.buffer.BufferedBatchMessage(end))
 }
 
-func (g *httpGroup) BufferedBatch(batch edge.BufferedBatchMessage) (edge.Message, error) {
+func (g *httpOutGroup) BufferedBatch(batch edge.BufferedBatchMessage) (edge.Message, error) {
 	row := batch.ToRow()
 	g.n.updateResultWithRow(g.idx, row)
 	return batch, nil
 }
 
-func (g *httpGroup) Point(p edge.PointMessage) (edge.Message, error) {
+func (g *httpOutGroup) Point(p edge.PointMessage) (edge.Message, error) {
 	row := p.ToRow()
 	g.n.updateResultWithRow(g.idx, row)
 	return p, nil
 }
 
-func (g *httpGroup) Barrier(b edge.BarrierMessage) (edge.Message, error) {
+func (g *httpOutGroup) Barrier(b edge.BarrierMessage) (edge.Message, error) {
 	return b, nil
 }

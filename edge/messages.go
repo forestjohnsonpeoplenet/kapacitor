@@ -226,9 +226,9 @@ func (pm *pointMessage) GroupInfo() GroupInfo {
 		tags[t] = pm.tags[t]
 	}
 	return GroupInfo{
-		Group: pm.groupID,
-		Tags:  tags,
-		Dims:  pm.dimensions,
+		ID:         pm.groupID,
+		Tags:       tags,
+		Dimensions: pm.dimensions,
 	}
 }
 
@@ -399,9 +399,9 @@ func (bb *beginBatchMessage) GroupID() models.GroupID {
 }
 func (bb *beginBatchMessage) GroupInfo() GroupInfo {
 	return GroupInfo{
-		Group: bb.groupID,
-		Tags:  bb.tags,
-		Dims:  bb.dimensions,
+		ID:         bb.groupID,
+		Tags:       bb.tags,
+		Dimensions: bb.dimensions,
 	}
 }
 func (bb *beginBatchMessage) Tags() models.Tags {

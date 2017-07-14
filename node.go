@@ -333,13 +333,13 @@ func (n *node) nodeStatsByGroup() (stats map[models.GroupID]nodeStats) {
 	stats = make(map[models.GroupID]nodeStats)
 	if len(n.outs) > 0 {
 		n.outs[0].ReadGroupStats(func(g *edge.GroupStats) {
-			stats[g.GroupInfo.Group] = nodeStats{
+			stats[g.GroupInfo.ID] = nodeStats{
 				Fields: models.Fields{
 					// A node's emitted count is the collected count of its output.
 					"emitted": g.Collected,
 				},
 				Tags:       g.GroupInfo.Tags,
-				Dimensions: g.GroupInfo.Dims,
+				Dimensions: g.GroupInfo.Dimensions,
 			}
 		})
 	}
