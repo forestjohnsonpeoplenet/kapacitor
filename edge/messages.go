@@ -149,6 +149,7 @@ type PointMessage interface {
 	Bytes(precision string) []byte
 
 	ToResult() models.Result
+	ToRow() *models.Row
 }
 
 type pointMessage struct {
@@ -288,6 +289,11 @@ func (pm *pointMessage) Bytes(precision string) []byte {
 }
 
 func (pm *pointMessage) ToResult() models.Result {
+	return models.Result{
+		Series: models.Rows{pm.ToRow()},
+	}
+}
+func (pm *pointMessage) ToRow() *models.Row {
 	row := &models.Row{
 		Name: pm.name,
 		Tags: pm.tags,
@@ -310,10 +316,7 @@ func (pm *pointMessage) ToResult() models.Result {
 			row.Values[0][i+1] = v
 		}
 	}
-
-	return models.Result{
-		Series: models.Rows{row},
-	}
+	return row
 }
 
 // BeginBatchMessage marks the beginning of a batch of points.
@@ -556,6 +559,7 @@ type BufferedBatchMessage interface {
 	SetEnd(EndBatchMessage)
 
 	ToResult() models.Result
+	ToRow() *models.Row
 }
 
 type bufferedBatchMessage struct {
@@ -625,10 +629,10 @@ func (bb *bufferedBatchMessage) SetEnd(end EndBatchMessage) {
 
 func (bb *bufferedBatchMessage) ToResult() models.Result {
 	return models.Result{
-		Series: models.Rows{bb.toRow()},
+		Series: models.Rows{bb.ToRow()},
 	}
 }
-func (bb *bufferedBatchMessage) toRow() (row *models.Row) {
+func (bb *bufferedBatchMessage) ToRow() (row *models.Row) {
 	row = &models.Row{
 		Name: bb.begin.Name(),
 		Tags: bb.begin.Tags(),
