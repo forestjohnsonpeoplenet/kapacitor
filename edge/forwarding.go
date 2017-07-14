@@ -88,3 +88,12 @@ func (fr *forwardingReceiver) forward(msg Message, err error) error {
 	}
 	return nil
 }
+
+func Forward(outs []StatsEdge, msg Message) error {
+	for _, out := range outs {
+		if err := out.Collect(msg); err != nil {
+			return err
+		}
+	}
+	return nil
+}

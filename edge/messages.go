@@ -82,6 +82,12 @@ type FieldsTagsTimeSetter interface {
 	TimeSetter
 }
 
+type FieldsTagsTimeGetter interface {
+	FieldGetter
+	TagGetter
+	TimeGetter
+}
+
 // PointMeta is the common read interfaces of point and batch messages.
 type PointMeta interface {
 	NameGetter

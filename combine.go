@@ -87,6 +87,7 @@ type combineBuffer struct {
 func (b *combineBuffer) BeginBatch(begin edge.BeginBatchMessage) error {
 	b.n.timer.Start()
 	defer b.n.timer.Stop()
+
 	b.name = begin.Name()
 	b.time = time.Time{}
 	if s := begin.SizeHint(); s > cap(b.points) {
