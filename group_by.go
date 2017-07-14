@@ -137,6 +137,8 @@ func (g *GroupByNode) emit(t time.Time) error {
 		for id, group := range g.groups {
 			// Update SizeHint since we know the final point count
 			group.Begin().SetSizeHint(len(group.Points()))
+			// Sort points since we didn't guarantee insertion order was sorted
+			sort.Sort(edge.BatchPointMessages(group.Points()))
 			// Send group batch to all children
 			g.timer.Pause()
 			for _, child := range g.outs {

@@ -236,3 +236,9 @@ POINTS:
 	}
 	return fields, nil
 }
+
+type timeList []time.Time
+
+func (t timeList) Len() int           { return len(t) }
+func (t timeList) Less(i, j int) bool { return t[i].Before(t[j]) }
+func (t timeList) Swap(i, j int)      { t[i], t[j] = t[j], t[i] }

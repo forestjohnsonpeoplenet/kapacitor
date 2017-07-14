@@ -816,6 +816,12 @@ func ResultToBufferedBatches(res influxdb.Result, groupByName bool) ([]BufferedB
 	return batches, nil
 }
 
+type BatchPointMessages []BatchPointMessage
+
+func (l BatchPointMessages) Len() int               { return len(l) }
+func (l BatchPointMessages) Less(i int, j int) bool { return l[i].Time().Before(l[j].Time()) }
+func (l BatchPointMessages) Swap(i int, j int)      { l[i], l[j] = l[j], l[i] }
+
 // BarrierMessage indicates that no data older than the barrier time will arrive.
 type BarrierMessage interface {
 	Message
