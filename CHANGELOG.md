@@ -6,6 +6,7 @@
 
 - [#1413](https://github.com/influxdata/kapacitor/issues/1413): Add subscriptions modes to InfluxDB subscriptions.
 - [#1436](https://github.com/influxdata/kapacitor/issues/1436): Add linear fill support for QueryNode.
+- [#1425](https://github.com/influxdata/kapacitor/pull/1425): BREAKING: Combine and Flatten nodes previously erroneously operated across batch boundaries, this has been fixed.
 
 ### Bugfixes
 
