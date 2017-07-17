@@ -11,8 +11,8 @@ const taskDir = "tasks"
 const handlerDir = "handlers"
 
 type Config struct {
-	Enabled bool   `toml:enabled`
-	Dir     string `toml:dir`
+	Enabled bool   `toml:"enabled"`
+	Dir     string `toml:"dir"`
 }
 
 // Validates verifies that the directory specified is an absolute path
