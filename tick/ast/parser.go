@@ -237,9 +237,32 @@ func (p *parser) statement() Node {
 	switch t := p.peek().typ; t {
 	case TokenVar:
 		return p.declaration()
+	case TokenSet:
+		return p.set()
+	case TokenDBRP:
+		return p.dbrp()
 	default:
 		return p.expression()
 	}
+}
+
+//parse a set statement
+func (p *parser) set() Node {
+	varTok := p.expect(TokenSet)
+	_ = p.expect(TokenTemplate)
+	setC := p.consumeComment()
+	return newSet(p.position(varTok.pos), setC)
+}
+
+//parse a declaration statement
+func (p *parser) dbrp() Node {
+	dbrpTok := p.expect(TokenDBRP)
+	dbrpC := p.consumeComment()
+	db := p.identifier()
+	_ = p.expect(TokenDot)
+	rp := p.identifier()
+
+	return newDBRP(p.position(dbrpTok.pos), db, rp, dbrpC)
 }
 
 //parse a declaration statement

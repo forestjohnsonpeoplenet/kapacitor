@@ -128,6 +128,61 @@ func TestParseStatements(t *testing.T) {
 		err    error
 	}{
 		{
+			script: `set template`,
+			Root: &ProgramNode{
+				position: position{
+					pos:  0,
+					line: 1,
+					char: 1,
+				},
+				Nodes: []Node{
+					&SetTemplateNode{
+						position: position{
+							pos:  0,
+							line: 1,
+							char: 1,
+						},
+					},
+				},
+			},
+		},
+		// TODO: Allow use of " in dbrp declarations
+		{
+			script: `dbrp telegraf.autogen`,
+			Root: &ProgramNode{
+				position: position{
+					pos:  0,
+					line: 1,
+					char: 1,
+				},
+				Nodes: []Node{
+					&DBRPNode{
+						position: position{
+							pos:  0,
+							line: 1,
+							char: 1,
+						},
+						DB: &IdentifierNode{
+							position: position{
+								pos:  5,
+								line: 1,
+								char: 6,
+							},
+							Ident: "telegraf",
+						},
+						RP: &IdentifierNode{
+							position: position{
+								pos:  14,
+								line: 1,
+								char: 15,
+							},
+							Ident: "autogen",
+						},
+					},
+				},
+			},
+		},
+		{
 			script: `var x int`,
 			Root: &ProgramNode{
 				position: position{

@@ -361,6 +361,73 @@ func (n *BinaryNode) Equal(o interface{}) bool {
 	return false
 }
 
+type DBRPNode struct {
+	position
+	Comment *CommentNode
+	DB      *IdentifierNode
+	RP      *IdentifierNode
+}
+
+func newDBRP(p position, db, rp *IdentifierNode, c *CommentNode) *DBRPNode {
+	return &DBRPNode{
+		position: p,
+		DB:       db,
+		RP:       rp,
+		Comment:  c,
+	}
+}
+
+func (d *DBRPNode) Equal(o interface{}) bool {
+	if on, ok := o.(*DBRPNode); ok {
+		return d.DB.Equal(on.DB) && d.RP.Equal(on.RP)
+	}
+
+	return false
+}
+
+func (s *DBRPNode) Format(buf *bytes.Buffer, indent string, onNewLine bool) {
+	if s.Comment != nil {
+		s.Comment.Format(buf, indent, onNewLine)
+	}
+	buf.WriteString(indent)
+	buf.WriteString(TokenDBRP.String())
+	buf.WriteByte(' ')
+	buf.WriteString(s.DB.Ident)
+	buf.WriteString(TokenDot.String())
+	buf.WriteString(s.RP.Ident)
+}
+
+func (n *DBRPNode) String() string {
+	return fmt.Sprintf("DBRPNode@%v{%v %v}%v", n.position, n.DB, n.RP, n.Comment)
+}
+
+type SetTemplateNode struct {
+	position
+	Comment *CommentNode
+}
+
+func newSet(p position, c *CommentNode) *SetTemplateNode {
+	return &SetTemplateNode{
+		position: p,
+		Comment:  c,
+	}
+}
+
+func (s *SetTemplateNode) Equal(o interface{}) bool {
+	_, ok := o.(*SetTemplateNode)
+	return ok
+}
+
+func (s *SetTemplateNode) Format(buf *bytes.Buffer, indent string, onNewLine bool) {
+	if s.Comment != nil {
+		s.Comment.Format(buf, indent, onNewLine)
+	}
+	buf.WriteString(indent)
+	buf.WriteString(TokenSet.String())
+	buf.WriteByte(' ')
+	buf.WriteString(TokenTemplate.String())
+}
+
 type DeclarationNode struct {
 	position
 	Left    *IdentifierNode
