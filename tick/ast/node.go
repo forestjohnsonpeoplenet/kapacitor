@@ -377,6 +377,11 @@ func newDBRP(p position, db, rp *IdentifierNode, c *CommentNode) *DBRPNode {
 	}
 }
 
+// TODO: Use Better typing eventually
+func (d *DBRPNode) DBRP() string {
+	return d.DB.Ident + "." + d.RP.Ident
+}
+
 func (d *DBRPNode) Equal(o interface{}) bool {
 	if on, ok := o.(*DBRPNode); ok {
 		return d.DB.Equal(on.DB) && d.RP.Equal(on.RP)
@@ -1046,6 +1051,80 @@ func newProgram(p position) *ProgramNode {
 	return &ProgramNode{
 		position: p,
 	}
+}
+
+// TODO: Use Better typing eventually
+func (n *ProgramNode) DBRPs() []string {
+	dbrps := []string{}
+	for _, nn := range n.Nodes {
+		switch nn.(type) {
+		case *DBRPNode:
+			dbrps = append(dbrps, nn.(*DBRPNode).DBRP())
+		default:
+			continue
+		}
+	}
+
+	return dbrps
+}
+
+func (n *ProgramNode) IsTemplate() bool {
+	for _, nn := range n.Nodes {
+		switch nn.(type) {
+		case *SetTemplateNode:
+			return true
+		default:
+			continue
+		}
+
+	}
+	return false
+}
+
+// TODO: better type here
+// TODO: add tests
+func (n *ProgramNode) TaskType() (string, error) {
+	tts := []string{}
+	for _, nn := range n.Nodes {
+		switch nn.(type) {
+		case *DeclarationNode:
+			if cn, ok := nn.(*DeclarationNode).Right.(*ChainNode); ok {
+				// TODO: dont repeat logic
+				var n = cn.Left
+			Loop1:
+				for {
+					switch n.(type) {
+					case *ChainNode:
+						n = n.(*ChainNode).Left
+					case *IdentifierNode:
+						tts = append(tts, n.(*IdentifierNode).Ident)
+						break Loop1
+					}
+				}
+			}
+		case *ChainNode:
+			var n = nn.(*ChainNode).Left
+		Loop2:
+			for {
+				switch n.(type) {
+				case *ChainNode:
+					n = n.(*ChainNode).Left
+				case *IdentifierNode:
+					tts = append(tts, n.(*IdentifierNode).Ident)
+					break Loop2
+				}
+			}
+		}
+	}
+
+	t := tts[0]
+	for _, tt := range tts[1:] {
+		if t != tt {
+			return "", errors.New("cannot have mixed types")
+		}
+	}
+
+	return t, nil
 }
 
 func (n *ProgramNode) Add(node Node) {
