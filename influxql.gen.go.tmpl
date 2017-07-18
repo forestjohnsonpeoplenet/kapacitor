@@ -75,23 +75,6 @@ func (a *{{.name}}PointAggregator) AggregatePoint(name string, p edge.FieldsTags
 	return nil
 }
 
-type {{.name}}PointBulkAggregator struct {
-	field      string
-	topBottomInfo *pipeline.TopBottomCallInfo
-	isSimpleSelector bool
-	aggregator    pipeline.{{.Name}}BulkPointAggregator
-}
-
-func (a *{{.name}}PointBulkAggregator) AggregatePoint(name string, p edge.FieldsTagsTimeGetter) error {
-	ap, err := convert{{.Name}}Point(name, p, a.field, a.isSimpleSelector, a.topBottomInfo)
-	if err != nil {
-		return err
-	}
-	a.aggregator.Aggregate{{.Name}}(ap)
-	return nil
-}
-
-
 type {{.name}}PointEmitter struct {
 	baseReduceContext
 	emitter influxql.{{.Name}}PointEmitter
@@ -203,11 +186,6 @@ type {{$a.name}}{{if ne $a.Name $e.Name}}{{$e.Name}}{{end}}ReduceContext struct 
     {{$e.name}}PointEmitter
 }
 
-// {{$a.name}}Bulk{{if ne $a.Name $e.Name}}{{$e.Name}}{{end}}ReduceContext uses composition to implement the reduceContext interface
-type {{$a.name}}Bulk{{if ne $a.Name $e.Name}}{{$e.Name}}{{end}}ReduceContext struct {
-    {{$a.name}}PointBulkAggregator
-    {{$e.name}}PointEmitter
-}
 {{end}}{{end}}
 
 
@@ -224,23 +202,6 @@ func determineReduceContextCreateFn(method string, kind reflect.Kind, rc pipelin
 				a, e := rc.Create{{$a.Name}}{{if ne $a.Name $e.Name}}{{$e.Name}}{{end}}Reducer()
 				return &{{$a.name}}{{if ne $a.Name $e.Name}}{{$e.Name}}{{end}}ReduceContext{
 					{{$a.name}}PointAggregator: {{$a.name}}PointAggregator{
-						field:      c.field,
-						topBottomInfo: rc.TopBottomCallInfo,
-						isSimpleSelector: rc.IsSimpleSelector,
-						aggregator: a,
-					},
-					{{$e.name}}PointEmitter: {{$e.name}}PointEmitter{
-						baseReduceContext: c,
-						emitter:           e,
-						isSimpleSelector: rc.IsSimpleSelector,
-					},
-				}
-			}
-		case rc.Create{{$a.Name}}Bulk{{if ne $a.Name $e.Name}}{{$e.Name}}{{end}}Reducer != nil:
-			 fn = func(c baseReduceContext) reduceContext {
-				a, e := rc.Create{{$a.Name}}Bulk{{if ne $a.Name $e.Name}}{{$e.Name}}{{end}}Reducer()
-				return &{{$a.name}}Bulk{{if ne $a.Name $e.Name}}{{$e.Name}}{{end}}ReduceContext{
-					{{$a.name}}PointBulkAggregator: {{$a.name}}PointBulkAggregator{
 						field:      c.field,
 						topBottomInfo: rc.TopBottomCallInfo,
 						isSimpleSelector: rc.IsSimpleSelector,

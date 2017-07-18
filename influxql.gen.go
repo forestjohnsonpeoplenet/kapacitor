@@ -77,22 +77,6 @@ func (a *floatPointAggregator) AggregatePoint(name string, p edge.FieldsTagsTime
 	return nil
 }
 
-type floatPointBulkAggregator struct {
-	field            string
-	topBottomInfo    *pipeline.TopBottomCallInfo
-	isSimpleSelector bool
-	aggregator       pipeline.FloatBulkPointAggregator
-}
-
-func (a *floatPointBulkAggregator) AggregatePoint(name string, p edge.FieldsTagsTimeGetter) error {
-	ap, err := convertFloatPoint(name, p, a.field, a.isSimpleSelector, a.topBottomInfo)
-	if err != nil {
-		return err
-	}
-	a.aggregator.AggregateFloat(ap)
-	return nil
-}
-
 type floatPointEmitter struct {
 	baseReduceContext
 	emitter          influxql.FloatPointEmitter
@@ -246,22 +230,6 @@ func (a *integerPointAggregator) AggregatePoint(name string, p edge.FieldsTagsTi
 	ap, err := convertIntegerPoint(name, p, a.field, a.isSimpleSelector, a.topBottomInfo)
 	if err != nil {
 		return nil
-	}
-	a.aggregator.AggregateInteger(ap)
-	return nil
-}
-
-type integerPointBulkAggregator struct {
-	field            string
-	topBottomInfo    *pipeline.TopBottomCallInfo
-	isSimpleSelector bool
-	aggregator       pipeline.IntegerBulkPointAggregator
-}
-
-func (a *integerPointBulkAggregator) AggregatePoint(name string, p edge.FieldsTagsTimeGetter) error {
-	ap, err := convertIntegerPoint(name, p, a.field, a.isSimpleSelector, a.topBottomInfo)
-	if err != nil {
-		return err
 	}
 	a.aggregator.AggregateInteger(ap)
 	return nil
@@ -425,22 +393,6 @@ func (a *stringPointAggregator) AggregatePoint(name string, p edge.FieldsTagsTim
 	return nil
 }
 
-type stringPointBulkAggregator struct {
-	field            string
-	topBottomInfo    *pipeline.TopBottomCallInfo
-	isSimpleSelector bool
-	aggregator       pipeline.StringBulkPointAggregator
-}
-
-func (a *stringPointBulkAggregator) AggregatePoint(name string, p edge.FieldsTagsTimeGetter) error {
-	ap, err := convertStringPoint(name, p, a.field, a.isSimpleSelector, a.topBottomInfo)
-	if err != nil {
-		return err
-	}
-	a.aggregator.AggregateString(ap)
-	return nil
-}
-
 type stringPointEmitter struct {
 	baseReduceContext
 	emitter          influxql.StringPointEmitter
@@ -599,22 +551,6 @@ func (a *booleanPointAggregator) AggregatePoint(name string, p edge.FieldsTagsTi
 	return nil
 }
 
-type booleanPointBulkAggregator struct {
-	field            string
-	topBottomInfo    *pipeline.TopBottomCallInfo
-	isSimpleSelector bool
-	aggregator       pipeline.BooleanBulkPointAggregator
-}
-
-func (a *booleanPointBulkAggregator) AggregatePoint(name string, p edge.FieldsTagsTimeGetter) error {
-	ap, err := convertBooleanPoint(name, p, a.field, a.isSimpleSelector, a.topBottomInfo)
-	if err != nil {
-		return err
-	}
-	a.aggregator.AggregateBoolean(ap)
-	return nil
-}
-
 type booleanPointEmitter struct {
 	baseReduceContext
 	emitter          influxql.BooleanPointEmitter
@@ -719,21 +655,9 @@ type floatReduceContext struct {
 	floatPointEmitter
 }
 
-// floatBulkReduceContext uses composition to implement the reduceContext interface
-type floatBulkReduceContext struct {
-	floatPointBulkAggregator
-	floatPointEmitter
-}
-
 // floatIntegerReduceContext uses composition to implement the reduceContext interface
 type floatIntegerReduceContext struct {
 	floatPointAggregator
-	integerPointEmitter
-}
-
-// floatBulkIntegerReduceContext uses composition to implement the reduceContext interface
-type floatBulkIntegerReduceContext struct {
-	floatPointBulkAggregator
 	integerPointEmitter
 }
 
@@ -743,21 +667,9 @@ type floatStringReduceContext struct {
 	stringPointEmitter
 }
 
-// floatBulkStringReduceContext uses composition to implement the reduceContext interface
-type floatBulkStringReduceContext struct {
-	floatPointBulkAggregator
-	stringPointEmitter
-}
-
 // floatBooleanReduceContext uses composition to implement the reduceContext interface
 type floatBooleanReduceContext struct {
 	floatPointAggregator
-	booleanPointEmitter
-}
-
-// floatBulkBooleanReduceContext uses composition to implement the reduceContext interface
-type floatBulkBooleanReduceContext struct {
-	floatPointBulkAggregator
 	booleanPointEmitter
 }
 
@@ -767,21 +679,9 @@ type integerFloatReduceContext struct {
 	floatPointEmitter
 }
 
-// integerBulkFloatReduceContext uses composition to implement the reduceContext interface
-type integerBulkFloatReduceContext struct {
-	integerPointBulkAggregator
-	floatPointEmitter
-}
-
 // integerReduceContext uses composition to implement the reduceContext interface
 type integerReduceContext struct {
 	integerPointAggregator
-	integerPointEmitter
-}
-
-// integerBulkReduceContext uses composition to implement the reduceContext interface
-type integerBulkReduceContext struct {
-	integerPointBulkAggregator
 	integerPointEmitter
 }
 
@@ -791,21 +691,9 @@ type integerStringReduceContext struct {
 	stringPointEmitter
 }
 
-// integerBulkStringReduceContext uses composition to implement the reduceContext interface
-type integerBulkStringReduceContext struct {
-	integerPointBulkAggregator
-	stringPointEmitter
-}
-
 // integerBooleanReduceContext uses composition to implement the reduceContext interface
 type integerBooleanReduceContext struct {
 	integerPointAggregator
-	booleanPointEmitter
-}
-
-// integerBulkBooleanReduceContext uses composition to implement the reduceContext interface
-type integerBulkBooleanReduceContext struct {
-	integerPointBulkAggregator
 	booleanPointEmitter
 }
 
@@ -815,21 +703,9 @@ type stringFloatReduceContext struct {
 	floatPointEmitter
 }
 
-// stringBulkFloatReduceContext uses composition to implement the reduceContext interface
-type stringBulkFloatReduceContext struct {
-	stringPointBulkAggregator
-	floatPointEmitter
-}
-
 // stringIntegerReduceContext uses composition to implement the reduceContext interface
 type stringIntegerReduceContext struct {
 	stringPointAggregator
-	integerPointEmitter
-}
-
-// stringBulkIntegerReduceContext uses composition to implement the reduceContext interface
-type stringBulkIntegerReduceContext struct {
-	stringPointBulkAggregator
 	integerPointEmitter
 }
 
@@ -839,21 +715,9 @@ type stringReduceContext struct {
 	stringPointEmitter
 }
 
-// stringBulkReduceContext uses composition to implement the reduceContext interface
-type stringBulkReduceContext struct {
-	stringPointBulkAggregator
-	stringPointEmitter
-}
-
 // stringBooleanReduceContext uses composition to implement the reduceContext interface
 type stringBooleanReduceContext struct {
 	stringPointAggregator
-	booleanPointEmitter
-}
-
-// stringBulkBooleanReduceContext uses composition to implement the reduceContext interface
-type stringBulkBooleanReduceContext struct {
-	stringPointBulkAggregator
 	booleanPointEmitter
 }
 
@@ -863,21 +727,9 @@ type booleanFloatReduceContext struct {
 	floatPointEmitter
 }
 
-// booleanBulkFloatReduceContext uses composition to implement the reduceContext interface
-type booleanBulkFloatReduceContext struct {
-	booleanPointBulkAggregator
-	floatPointEmitter
-}
-
 // booleanIntegerReduceContext uses composition to implement the reduceContext interface
 type booleanIntegerReduceContext struct {
 	booleanPointAggregator
-	integerPointEmitter
-}
-
-// booleanBulkIntegerReduceContext uses composition to implement the reduceContext interface
-type booleanBulkIntegerReduceContext struct {
-	booleanPointBulkAggregator
 	integerPointEmitter
 }
 
@@ -887,21 +739,9 @@ type booleanStringReduceContext struct {
 	stringPointEmitter
 }
 
-// booleanBulkStringReduceContext uses composition to implement the reduceContext interface
-type booleanBulkStringReduceContext struct {
-	booleanPointBulkAggregator
-	stringPointEmitter
-}
-
 // booleanReduceContext uses composition to implement the reduceContext interface
 type booleanReduceContext struct {
 	booleanPointAggregator
-	booleanPointEmitter
-}
-
-// booleanBulkReduceContext uses composition to implement the reduceContext interface
-type booleanBulkReduceContext struct {
-	booleanPointBulkAggregator
 	booleanPointEmitter
 }
 
@@ -916,23 +756,6 @@ func determineReduceContextCreateFn(method string, kind reflect.Kind, rc pipelin
 				a, e := rc.CreateFloatReducer()
 				return &floatReduceContext{
 					floatPointAggregator: floatPointAggregator{
-						field:            c.field,
-						topBottomInfo:    rc.TopBottomCallInfo,
-						isSimpleSelector: rc.IsSimpleSelector,
-						aggregator:       a,
-					},
-					floatPointEmitter: floatPointEmitter{
-						baseReduceContext: c,
-						emitter:           e,
-						isSimpleSelector:  rc.IsSimpleSelector,
-					},
-				}
-			}
-		case rc.CreateFloatBulkReducer != nil:
-			fn = func(c baseReduceContext) reduceContext {
-				a, e := rc.CreateFloatBulkReducer()
-				return &floatBulkReduceContext{
-					floatPointBulkAggregator: floatPointBulkAggregator{
 						field:            c.field,
 						topBottomInfo:    rc.TopBottomCallInfo,
 						isSimpleSelector: rc.IsSimpleSelector,
@@ -963,23 +786,6 @@ func determineReduceContextCreateFn(method string, kind reflect.Kind, rc pipelin
 					},
 				}
 			}
-		case rc.CreateFloatBulkIntegerReducer != nil:
-			fn = func(c baseReduceContext) reduceContext {
-				a, e := rc.CreateFloatBulkIntegerReducer()
-				return &floatBulkIntegerReduceContext{
-					floatPointBulkAggregator: floatPointBulkAggregator{
-						field:            c.field,
-						topBottomInfo:    rc.TopBottomCallInfo,
-						isSimpleSelector: rc.IsSimpleSelector,
-						aggregator:       a,
-					},
-					integerPointEmitter: integerPointEmitter{
-						baseReduceContext: c,
-						emitter:           e,
-						isSimpleSelector:  rc.IsSimpleSelector,
-					},
-				}
-			}
 
 		case rc.CreateFloatStringReducer != nil:
 			fn = func(c baseReduceContext) reduceContext {
@@ -998,46 +804,12 @@ func determineReduceContextCreateFn(method string, kind reflect.Kind, rc pipelin
 					},
 				}
 			}
-		case rc.CreateFloatBulkStringReducer != nil:
-			fn = func(c baseReduceContext) reduceContext {
-				a, e := rc.CreateFloatBulkStringReducer()
-				return &floatBulkStringReduceContext{
-					floatPointBulkAggregator: floatPointBulkAggregator{
-						field:            c.field,
-						topBottomInfo:    rc.TopBottomCallInfo,
-						isSimpleSelector: rc.IsSimpleSelector,
-						aggregator:       a,
-					},
-					stringPointEmitter: stringPointEmitter{
-						baseReduceContext: c,
-						emitter:           e,
-						isSimpleSelector:  rc.IsSimpleSelector,
-					},
-				}
-			}
 
 		case rc.CreateFloatBooleanReducer != nil:
 			fn = func(c baseReduceContext) reduceContext {
 				a, e := rc.CreateFloatBooleanReducer()
 				return &floatBooleanReduceContext{
 					floatPointAggregator: floatPointAggregator{
-						field:            c.field,
-						topBottomInfo:    rc.TopBottomCallInfo,
-						isSimpleSelector: rc.IsSimpleSelector,
-						aggregator:       a,
-					},
-					booleanPointEmitter: booleanPointEmitter{
-						baseReduceContext: c,
-						emitter:           e,
-						isSimpleSelector:  rc.IsSimpleSelector,
-					},
-				}
-			}
-		case rc.CreateFloatBulkBooleanReducer != nil:
-			fn = func(c baseReduceContext) reduceContext {
-				a, e := rc.CreateFloatBulkBooleanReducer()
-				return &floatBulkBooleanReduceContext{
-					floatPointBulkAggregator: floatPointBulkAggregator{
 						field:            c.field,
 						topBottomInfo:    rc.TopBottomCallInfo,
 						isSimpleSelector: rc.IsSimpleSelector,
@@ -1075,46 +847,12 @@ func determineReduceContextCreateFn(method string, kind reflect.Kind, rc pipelin
 					},
 				}
 			}
-		case rc.CreateIntegerBulkFloatReducer != nil:
-			fn = func(c baseReduceContext) reduceContext {
-				a, e := rc.CreateIntegerBulkFloatReducer()
-				return &integerBulkFloatReduceContext{
-					integerPointBulkAggregator: integerPointBulkAggregator{
-						field:            c.field,
-						topBottomInfo:    rc.TopBottomCallInfo,
-						isSimpleSelector: rc.IsSimpleSelector,
-						aggregator:       a,
-					},
-					floatPointEmitter: floatPointEmitter{
-						baseReduceContext: c,
-						emitter:           e,
-						isSimpleSelector:  rc.IsSimpleSelector,
-					},
-				}
-			}
 
 		case rc.CreateIntegerReducer != nil:
 			fn = func(c baseReduceContext) reduceContext {
 				a, e := rc.CreateIntegerReducer()
 				return &integerReduceContext{
 					integerPointAggregator: integerPointAggregator{
-						field:            c.field,
-						topBottomInfo:    rc.TopBottomCallInfo,
-						isSimpleSelector: rc.IsSimpleSelector,
-						aggregator:       a,
-					},
-					integerPointEmitter: integerPointEmitter{
-						baseReduceContext: c,
-						emitter:           e,
-						isSimpleSelector:  rc.IsSimpleSelector,
-					},
-				}
-			}
-		case rc.CreateIntegerBulkReducer != nil:
-			fn = func(c baseReduceContext) reduceContext {
-				a, e := rc.CreateIntegerBulkReducer()
-				return &integerBulkReduceContext{
-					integerPointBulkAggregator: integerPointBulkAggregator{
 						field:            c.field,
 						topBottomInfo:    rc.TopBottomCallInfo,
 						isSimpleSelector: rc.IsSimpleSelector,
@@ -1145,46 +883,12 @@ func determineReduceContextCreateFn(method string, kind reflect.Kind, rc pipelin
 					},
 				}
 			}
-		case rc.CreateIntegerBulkStringReducer != nil:
-			fn = func(c baseReduceContext) reduceContext {
-				a, e := rc.CreateIntegerBulkStringReducer()
-				return &integerBulkStringReduceContext{
-					integerPointBulkAggregator: integerPointBulkAggregator{
-						field:            c.field,
-						topBottomInfo:    rc.TopBottomCallInfo,
-						isSimpleSelector: rc.IsSimpleSelector,
-						aggregator:       a,
-					},
-					stringPointEmitter: stringPointEmitter{
-						baseReduceContext: c,
-						emitter:           e,
-						isSimpleSelector:  rc.IsSimpleSelector,
-					},
-				}
-			}
 
 		case rc.CreateIntegerBooleanReducer != nil:
 			fn = func(c baseReduceContext) reduceContext {
 				a, e := rc.CreateIntegerBooleanReducer()
 				return &integerBooleanReduceContext{
 					integerPointAggregator: integerPointAggregator{
-						field:            c.field,
-						topBottomInfo:    rc.TopBottomCallInfo,
-						isSimpleSelector: rc.IsSimpleSelector,
-						aggregator:       a,
-					},
-					booleanPointEmitter: booleanPointEmitter{
-						baseReduceContext: c,
-						emitter:           e,
-						isSimpleSelector:  rc.IsSimpleSelector,
-					},
-				}
-			}
-		case rc.CreateIntegerBulkBooleanReducer != nil:
-			fn = func(c baseReduceContext) reduceContext {
-				a, e := rc.CreateIntegerBulkBooleanReducer()
-				return &integerBulkBooleanReduceContext{
-					integerPointBulkAggregator: integerPointBulkAggregator{
 						field:            c.field,
 						topBottomInfo:    rc.TopBottomCallInfo,
 						isSimpleSelector: rc.IsSimpleSelector,
@@ -1222,46 +926,12 @@ func determineReduceContextCreateFn(method string, kind reflect.Kind, rc pipelin
 					},
 				}
 			}
-		case rc.CreateStringBulkFloatReducer != nil:
-			fn = func(c baseReduceContext) reduceContext {
-				a, e := rc.CreateStringBulkFloatReducer()
-				return &stringBulkFloatReduceContext{
-					stringPointBulkAggregator: stringPointBulkAggregator{
-						field:            c.field,
-						topBottomInfo:    rc.TopBottomCallInfo,
-						isSimpleSelector: rc.IsSimpleSelector,
-						aggregator:       a,
-					},
-					floatPointEmitter: floatPointEmitter{
-						baseReduceContext: c,
-						emitter:           e,
-						isSimpleSelector:  rc.IsSimpleSelector,
-					},
-				}
-			}
 
 		case rc.CreateStringIntegerReducer != nil:
 			fn = func(c baseReduceContext) reduceContext {
 				a, e := rc.CreateStringIntegerReducer()
 				return &stringIntegerReduceContext{
 					stringPointAggregator: stringPointAggregator{
-						field:            c.field,
-						topBottomInfo:    rc.TopBottomCallInfo,
-						isSimpleSelector: rc.IsSimpleSelector,
-						aggregator:       a,
-					},
-					integerPointEmitter: integerPointEmitter{
-						baseReduceContext: c,
-						emitter:           e,
-						isSimpleSelector:  rc.IsSimpleSelector,
-					},
-				}
-			}
-		case rc.CreateStringBulkIntegerReducer != nil:
-			fn = func(c baseReduceContext) reduceContext {
-				a, e := rc.CreateStringBulkIntegerReducer()
-				return &stringBulkIntegerReduceContext{
-					stringPointBulkAggregator: stringPointBulkAggregator{
 						field:            c.field,
 						topBottomInfo:    rc.TopBottomCallInfo,
 						isSimpleSelector: rc.IsSimpleSelector,
@@ -1292,46 +962,12 @@ func determineReduceContextCreateFn(method string, kind reflect.Kind, rc pipelin
 					},
 				}
 			}
-		case rc.CreateStringBulkReducer != nil:
-			fn = func(c baseReduceContext) reduceContext {
-				a, e := rc.CreateStringBulkReducer()
-				return &stringBulkReduceContext{
-					stringPointBulkAggregator: stringPointBulkAggregator{
-						field:            c.field,
-						topBottomInfo:    rc.TopBottomCallInfo,
-						isSimpleSelector: rc.IsSimpleSelector,
-						aggregator:       a,
-					},
-					stringPointEmitter: stringPointEmitter{
-						baseReduceContext: c,
-						emitter:           e,
-						isSimpleSelector:  rc.IsSimpleSelector,
-					},
-				}
-			}
 
 		case rc.CreateStringBooleanReducer != nil:
 			fn = func(c baseReduceContext) reduceContext {
 				a, e := rc.CreateStringBooleanReducer()
 				return &stringBooleanReduceContext{
 					stringPointAggregator: stringPointAggregator{
-						field:            c.field,
-						topBottomInfo:    rc.TopBottomCallInfo,
-						isSimpleSelector: rc.IsSimpleSelector,
-						aggregator:       a,
-					},
-					booleanPointEmitter: booleanPointEmitter{
-						baseReduceContext: c,
-						emitter:           e,
-						isSimpleSelector:  rc.IsSimpleSelector,
-					},
-				}
-			}
-		case rc.CreateStringBulkBooleanReducer != nil:
-			fn = func(c baseReduceContext) reduceContext {
-				a, e := rc.CreateStringBulkBooleanReducer()
-				return &stringBulkBooleanReduceContext{
-					stringPointBulkAggregator: stringPointBulkAggregator{
 						field:            c.field,
 						topBottomInfo:    rc.TopBottomCallInfo,
 						isSimpleSelector: rc.IsSimpleSelector,
@@ -1369,46 +1005,12 @@ func determineReduceContextCreateFn(method string, kind reflect.Kind, rc pipelin
 					},
 				}
 			}
-		case rc.CreateBooleanBulkFloatReducer != nil:
-			fn = func(c baseReduceContext) reduceContext {
-				a, e := rc.CreateBooleanBulkFloatReducer()
-				return &booleanBulkFloatReduceContext{
-					booleanPointBulkAggregator: booleanPointBulkAggregator{
-						field:            c.field,
-						topBottomInfo:    rc.TopBottomCallInfo,
-						isSimpleSelector: rc.IsSimpleSelector,
-						aggregator:       a,
-					},
-					floatPointEmitter: floatPointEmitter{
-						baseReduceContext: c,
-						emitter:           e,
-						isSimpleSelector:  rc.IsSimpleSelector,
-					},
-				}
-			}
 
 		case rc.CreateBooleanIntegerReducer != nil:
 			fn = func(c baseReduceContext) reduceContext {
 				a, e := rc.CreateBooleanIntegerReducer()
 				return &booleanIntegerReduceContext{
 					booleanPointAggregator: booleanPointAggregator{
-						field:            c.field,
-						topBottomInfo:    rc.TopBottomCallInfo,
-						isSimpleSelector: rc.IsSimpleSelector,
-						aggregator:       a,
-					},
-					integerPointEmitter: integerPointEmitter{
-						baseReduceContext: c,
-						emitter:           e,
-						isSimpleSelector:  rc.IsSimpleSelector,
-					},
-				}
-			}
-		case rc.CreateBooleanBulkIntegerReducer != nil:
-			fn = func(c baseReduceContext) reduceContext {
-				a, e := rc.CreateBooleanBulkIntegerReducer()
-				return &booleanBulkIntegerReduceContext{
-					booleanPointBulkAggregator: booleanPointBulkAggregator{
 						field:            c.field,
 						topBottomInfo:    rc.TopBottomCallInfo,
 						isSimpleSelector: rc.IsSimpleSelector,
@@ -1439,46 +1041,12 @@ func determineReduceContextCreateFn(method string, kind reflect.Kind, rc pipelin
 					},
 				}
 			}
-		case rc.CreateBooleanBulkStringReducer != nil:
-			fn = func(c baseReduceContext) reduceContext {
-				a, e := rc.CreateBooleanBulkStringReducer()
-				return &booleanBulkStringReduceContext{
-					booleanPointBulkAggregator: booleanPointBulkAggregator{
-						field:            c.field,
-						topBottomInfo:    rc.TopBottomCallInfo,
-						isSimpleSelector: rc.IsSimpleSelector,
-						aggregator:       a,
-					},
-					stringPointEmitter: stringPointEmitter{
-						baseReduceContext: c,
-						emitter:           e,
-						isSimpleSelector:  rc.IsSimpleSelector,
-					},
-				}
-			}
 
 		case rc.CreateBooleanReducer != nil:
 			fn = func(c baseReduceContext) reduceContext {
 				a, e := rc.CreateBooleanReducer()
 				return &booleanReduceContext{
 					booleanPointAggregator: booleanPointAggregator{
-						field:            c.field,
-						topBottomInfo:    rc.TopBottomCallInfo,
-						isSimpleSelector: rc.IsSimpleSelector,
-						aggregator:       a,
-					},
-					booleanPointEmitter: booleanPointEmitter{
-						baseReduceContext: c,
-						emitter:           e,
-						isSimpleSelector:  rc.IsSimpleSelector,
-					},
-				}
-			}
-		case rc.CreateBooleanBulkReducer != nil:
-			fn = func(c baseReduceContext) reduceContext {
-				a, e := rc.CreateBooleanBulkReducer()
-				return &booleanBulkReduceContext{
-					booleanPointBulkAggregator: booleanPointBulkAggregator{
 						field:            c.field,
 						topBottomInfo:    rc.TopBottomCallInfo,
 						isSimpleSelector: rc.IsSimpleSelector,
