@@ -17,9 +17,7 @@ const (
 	TokenError TokenType = iota
 	TokenEOF
 	TokenVar
-	TokenSet
 	TokenDBRP
-	TokenTemplate
 	TokenAsgn
 	TokenDot
 	TokenPipe
@@ -107,27 +105,24 @@ var operatorStr = [...]string{
 var strToOperator map[string]TokenType
 
 const (
-	KW_And      = "AND"
-	KW_Or       = "OR"
-	KW_True     = "TRUE"
-	KW_False    = "FALSE"
-	KW_Var      = "var"
-	KW_Set      = "set"
-	KW_DBRP     = "dbrp"
-	KW_Template = "template"
-	KW_Lambda   = "lambda"
+	KW_And    = "AND"
+	KW_Or     = "OR"
+	KW_True   = "TRUE"
+	KW_False  = "FALSE"
+	KW_Var    = "var"
+	KW_Set    = "set"
+	KW_DBRP   = "dbrp"
+	KW_Lambda = "lambda"
 )
 
 var keywords = map[string]TokenType{
-	KW_And:      TokenAnd,
-	KW_Or:       TokenOr,
-	KW_True:     TokenTrue,
-	KW_False:    TokenFalse,
-	KW_Var:      TokenVar,
-	KW_Set:      TokenSet,
-	KW_DBRP:     TokenDBRP,
-	KW_Template: TokenTemplate,
-	KW_Lambda:   TokenLambda,
+	KW_And:    TokenAnd,
+	KW_Or:     TokenOr,
+	KW_True:   TokenTrue,
+	KW_False:  TokenFalse,
+	KW_Var:    TokenVar,
+	KW_DBRP:   TokenDBRP,
+	KW_Lambda: TokenLambda,
 }
 
 func init() {
@@ -146,12 +141,8 @@ func (t TokenType) String() string {
 		return "EOF"
 	case t == TokenVar:
 		return "var"
-	case t == TokenSet:
-		return "set"
 	case t == TokenDBRP:
 		return "dbrp"
-	case t == TokenTemplate:
-		return "template"
 	case t == TokenIdent:
 		return "identifier"
 	case t == TokenReference:

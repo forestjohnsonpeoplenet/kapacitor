@@ -406,33 +406,6 @@ func (n *DBRPNode) String() string {
 	return fmt.Sprintf("DBRPNode@%v{%v %v}%v", n.position, n.DB, n.RP, n.Comment)
 }
 
-type SetTemplateNode struct {
-	position
-	Comment *CommentNode
-}
-
-func newSet(p position, c *CommentNode) *SetTemplateNode {
-	return &SetTemplateNode{
-		position: p,
-		Comment:  c,
-	}
-}
-
-func (s *SetTemplateNode) Equal(o interface{}) bool {
-	_, ok := o.(*SetTemplateNode)
-	return ok
-}
-
-func (s *SetTemplateNode) Format(buf *bytes.Buffer, indent string, onNewLine bool) {
-	if s.Comment != nil {
-		s.Comment.Format(buf, indent, onNewLine)
-	}
-	buf.WriteString(indent)
-	buf.WriteString(TokenSet.String())
-	buf.WriteByte(' ')
-	buf.WriteString(TokenTemplate.String())
-}
-
 type DeclarationNode struct {
 	position
 	Left    *IdentifierNode
@@ -1066,19 +1039,6 @@ func (n *ProgramNode) DBRPs() []string {
 	}
 
 	return dbrps
-}
-
-func (n *ProgramNode) IsTemplate() bool {
-	for _, nn := range n.Nodes {
-		switch nn.(type) {
-		case *SetTemplateNode:
-			return true
-		default:
-			continue
-		}
-
-	}
-	return false
 }
 
 // TODO: better type here

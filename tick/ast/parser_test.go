@@ -127,25 +127,6 @@ func TestParseStatements(t *testing.T) {
 		Root   Node
 		err    error
 	}{
-		{
-			script: `set template`,
-			Root: &ProgramNode{
-				position: position{
-					pos:  0,
-					line: 1,
-					char: 1,
-				},
-				Nodes: []Node{
-					&SetTemplateNode{
-						position: position{
-							pos:  0,
-							line: 1,
-							char: 1,
-						},
-					},
-				},
-			},
-		},
 		// TODO: Allow use of " in dbrp declarations
 		{
 			script: `dbrp telegraf.autogen`,
