@@ -677,6 +677,7 @@ func (ts *Service) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// TODO: cleanup
 	p, err := ast.Parse(task.TICKscript)
 	if err != nil {
 		httpd.HttpError(w, fmt.Sprintf("failed to parse provided tickscript: %v", err), true, http.StatusBadRequest)
@@ -724,6 +725,23 @@ func (ts *Service) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 			task.Type = client.BatchTask
 		}
 		task.TICKscript = template.TICKscript
+		// TODO: cleanup
+		p, err := ast.Parse(task.TICKscript)
+		if err != nil {
+			httpd.HttpError(w, fmt.Sprintf("failed to parse provided tickscript: %v", err), true, http.StatusBadRequest)
+			return
+		}
+
+		pn, ok := p.(*ast.ProgramNode)
+		// This should never happen
+		if !ok {
+			httpd.HttpError(w, fmt.Sprint("failed to parse provided tickscript"), true, http.StatusBadRequest)
+			return
+		}
+
+		task.Type = pn.TaskType()
+		task.DBRPs = append(task.DBRPs, pn.DBRPs()...)
+
 		if err := ts.templates.AssociateTask(task.TemplateID, newTask.ID); err != nil {
 			httpd.HttpError(w, fmt.Sprintf("failed to associate task with template: %s", err), true, http.StatusBadRequest)
 			return
@@ -848,6 +866,7 @@ func (ts *Service) handleUpdateTask(w http.ResponseWriter, r *http.Request) {
 	if task.TICKscript == "" {
 		tickscript = original.TICKscript
 	}
+	// TODO: cleanup
 	p, err := ast.Parse(tickscript)
 	if err != nil {
 		httpd.HttpError(w, fmt.Sprintf("failed to parse provided tickscript: %v", err), true, http.StatusBadRequest)
@@ -1612,6 +1631,21 @@ func (ts *Service) handleCreateTemplate(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	p, err := ast.Parse(template.TICKscript)
+	if err != nil {
+		httpd.HttpError(w, fmt.Sprintf("failed to parse provided tickscript: %v", err), true, http.StatusBadRequest)
+		return
+	}
+
+	pn, ok := p.(*ast.ProgramNode)
+	// This should never happen
+	if !ok {
+		httpd.HttpError(w, fmt.Sprint("failed to parse provided tickscript"), true, http.StatusBadRequest)
+		return
+	}
+
+	template.Type = pn.TaskType()
+
 	newTemplate := Template{
 		ID: template.ID,
 	}
@@ -1689,6 +1723,27 @@ func (ts *Service) handleUpdateTemplate(w http.ResponseWriter, r *http.Request) 
 		httpd.HttpError(w, "template does not exist, cannot update", true, http.StatusNotFound)
 		return
 	}
+
+	tickscript := template.TICKscript
+	if template.TICKscript == "" {
+		tickscript = original.TICKscript
+	}
+	// TODO: cleanup
+	p, err := ast.Parse(tickscript)
+	if err != nil {
+		httpd.HttpError(w, fmt.Sprintf("failed to parse provided tickscript: %v", err), true, http.StatusBadRequest)
+		return
+	}
+
+	pn, ok := p.(*ast.ProgramNode)
+	// This should never happen
+	if !ok {
+		httpd.HttpError(w, fmt.Sprint("failed to parse provided tickscript"), true, http.StatusBadRequest)
+		return
+	}
+
+	template.Type = pn.TaskType()
+
 	updated := original
 
 	// Set ID
@@ -1795,6 +1850,35 @@ func (ts *Service) updateAllAssociatedTasks(old, new Template, taskIds []string)
 			}
 		}
 	}()
+
+	// We need to pull dbrp values from old tickscript if new tickscript isnt provided
+	tickscript := old.TICKscript
+	if new.TICKscript == "" {
+		tickscript = new.TICKscript
+	}
+
+	// TODO: cleanup
+	p, err := ast.Parse(tickscript)
+	if err != nil {
+		return fmt.Errorf("failed to parse provided tickscript: %v", err)
+	}
+
+	pn, ok := p.(*ast.ProgramNode)
+	// This should never happen
+	if !ok {
+		return fmt.Errorf("failed to parse provided tickscript")
+	}
+	//taskType := pn.TaskType()
+
+	dbrps := pn.DBRPs()
+	taskDBRPs := make([]DBRP, len(dbrps))
+	for i, dbrp := range dbrps {
+		taskDBRPs[i] = DBRP{
+			Database:        dbrp.Database,
+			RetentionPolicy: dbrp.RetentionPolicy,
+		}
+	}
+
 	for ; i < len(taskIds); i++ {
 		taskId := taskIds[i]
 		task, err := ts.tasks.Get(taskId)
@@ -1814,6 +1898,7 @@ func (ts *Service) updateAllAssociatedTasks(old, new Template, taskIds []string)
 		task.TemplateID = new.ID
 		task.TICKscript = new.TICKscript
 		task.Type = new.Type
+		task.DBRPs = taskDBRPs
 		if err := ts.tasks.Replace(task); err != nil {
 			return fmt.Errorf("error updating associated task %s: %s", taskId, err)
 		}
