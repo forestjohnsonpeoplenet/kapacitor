@@ -475,7 +475,10 @@ func (s *Server) writeData() error {
 }
 
 func (s *Server) writePoint(pt models.Point) error {
-	strs, floats, ints := s.fieldsToTypedMaps(pt.Fields)
+	strs, floats, ints, err := s.fieldsToTypedMaps(pt.Fields)
+	if err != nil {
+		return err
+	}
 	udfPoint := &Point{
 		Time:            pt.Time.UnixNano(),
 		Name:            pt.Name,
@@ -499,6 +502,7 @@ func (s *Server) fieldsToTypedMaps(fields models.Fields) (
 	strs map[string]string,
 	floats map[string]float64,
 	ints map[string]int64,
+	err error
 ) {
 	for k, v := range fields {
 		switch value := v.(type) {
@@ -518,7 +522,7 @@ func (s *Server) fieldsToTypedMaps(fields models.Fields) (
 			}
 			ints[k] = value
 		default:
-			panic("unsupported field value type")
+			err = fmt.Errorf("field: %s, value type: %s", k, v.(type))
 		}
 	}
 	return
@@ -559,7 +563,10 @@ func (s *Server) writeBatch(b models.Batch) error {
 	rp := &Request_Point{}
 	req.Message = rp
 	for _, pt := range b.Points {
-		strs, floats, ints := s.fieldsToTypedMaps(pt.Fields)
+		strs, floats, ints, err := s.fieldsToTypedMaps(pt.Fields)
+		if err != nil {
+			return err
+		}
 		udfPoint := &Point{
 			Time:         pt.Time.UnixNano(),
 			Group:        string(b.Group),
@@ -569,7 +576,7 @@ func (s *Server) writeBatch(b models.Batch) error {
 			FieldsString: strs,
 		}
 		rp.Point = udfPoint
-		err := s.writeRequest(req)
+		err = s.writeRequest(req)
 		if err != nil {
 			return err
 		}
