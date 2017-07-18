@@ -502,7 +502,7 @@ func (s *Server) fieldsToTypedMaps(fields models.Fields) (
 	strs map[string]string,
 	floats map[string]float64,
 	ints map[string]int64,
-	err error
+	err error,
 ) {
 	for k, v := range fields {
 		switch value := v.(type) {
