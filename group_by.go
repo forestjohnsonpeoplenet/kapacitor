@@ -68,10 +68,8 @@ func (g *GroupByNode) Point(p edge.PointMessage) error {
 	dims.TagNames = computeTagNames(p.Tags(), g.allDimensions, g.tagNames, g.g.ExcludedDimensions)
 	p.SetDimensions(dims)
 	g.timer.Stop()
-	for _, out := range g.outs {
-		if err := out.Collect(p); err != nil {
-			return err
-		}
+	if err := edge.Forward(g.outs, p); err != nil {
+		return err
 	}
 	return nil
 }
@@ -141,10 +139,8 @@ func (g *GroupByNode) emit(t time.Time) error {
 			sort.Sort(edge.BatchPointMessages(group.Points()))
 			// Send group batch to all children
 			g.timer.Pause()
-			for _, child := range g.outs {
-				if err := child.Collect(group); err != nil {
-					return err
-				}
+			if err := edge.Forward(g.outs, group); err != nil {
+				return err
 			}
 			g.timer.Resume()
 			g.mu.Lock()

@@ -107,6 +107,7 @@ type influxqlGroup struct {
 func (g *influxqlGroup) BeginBatch(begin edge.BeginBatchMessage) (edge.Message, error) {
 	g.begin = begin
 	g.batchSize = 0
+	g.bc.time = begin.Time()
 	g.rc = nil
 	return nil, nil
 }
@@ -148,11 +149,9 @@ func (g *influxqlGroup) EndBatch(end edge.EndBatchMessage) (edge.Message, error)
 }
 
 func (g *influxqlGroup) Point(p edge.PointMessage) (edge.Message, error) {
-	g.n.logger.Println("D! Point:", p.Time(), g.bc.time)
 	if p.Time().Equal(g.bc.time) {
 		g.aggregatePoint(p)
 	} else {
-		g.n.logger.Println("D!, time elapsed resetting context")
 		// Time has elapsed, emit current context
 		var msg edge.Message
 		if g.rc != nil {
@@ -178,11 +177,11 @@ func (g *influxqlGroup) Point(p edge.PointMessage) (edge.Message, error) {
 }
 
 func (g *influxqlGroup) aggregatePoint(p edge.PointMessage) {
-	g.n.logger.Println("D! aggregatePoint", p)
 	if g.rc == nil {
 		if err := g.realizeReduceContextFromFields(p.Fields()); err != nil {
 			g.n.incrementErrorCount()
 			g.n.logger.Println("E!", err)
+			return
 		}
 	}
 	err := g.rc.AggregatePoint(p.Name(), p)
@@ -228,7 +227,7 @@ type influxqlStreamingTransformGroup struct {
 func (g *influxqlStreamingTransformGroup) BeginBatch(begin edge.BeginBatchMessage) (edge.Message, error) {
 	g.begin = begin.ShallowCopy()
 	g.begin.SetSizeHint(0)
-	g.batchSize = 0
+	g.bc.time = begin.Time()
 	g.rc = nil
 	return begin, nil
 }
@@ -241,7 +240,6 @@ func (g *influxqlStreamingTransformGroup) BatchPoint(bp edge.BatchPointMessage) 
 			return nil, nil
 		}
 	}
-	g.batchSize++
 	if err := g.rc.AggregatePoint(g.begin.Name(), bp); err != nil {
 		g.n.incrementErrorCount()
 		g.n.logger.Println("E! failed to aggregate batch point:", err)
@@ -249,7 +247,7 @@ func (g *influxqlStreamingTransformGroup) BatchPoint(bp edge.BatchPointMessage) 
 	if ep, err := g.rc.EmitPoint(); err != nil {
 		g.n.incrementErrorCount()
 		g.n.logger.Println("E! failed to emit batch point:", err)
-	} else {
+	} else if ep != nil {
 		return edge.NewBatchPointMessage(
 			ep.Fields(),
 			ep.Tags(),
@@ -260,12 +258,7 @@ func (g *influxqlStreamingTransformGroup) BatchPoint(bp edge.BatchPointMessage) 
 }
 
 func (g *influxqlStreamingTransformGroup) EndBatch(end edge.EndBatchMessage) (edge.Message, error) {
-	if g.batchSize == 0 && !g.n.n.ReduceCreater.IsEmptyOK {
-		// End the batch now.
-		// Do not call Emit on the reducer since it can't handle empty batches.
-		return end, nil
-	}
-	return g.influxqlGroup.EndBatch(end)
+	return end, nil
 }
 
 func (g *influxqlStreamingTransformGroup) Point(p edge.PointMessage) (edge.Message, error) {
@@ -295,200 +288,6 @@ func (g *influxqlStreamingTransformGroup) Point(p edge.PointMessage) (edge.Messa
 func (g *influxqlStreamingTransformGroup) Barrier(b edge.BarrierMessage) (edge.Message, error) {
 	return b, nil
 }
-
-//func (n *InfluxQLNode) asdf() error {
-//	var mu sync.RWMutex
-//	contexts := make(map[models.GroupID]reduceContext)
-//	valueF := func() int64 {
-//		mu.RLock()
-//		l := len(contexts)
-//		mu.RUnlock()
-//		return int64(l)
-//	}
-//	n.statMap.Set(statCardinalityGauge, expvar.NewIntFuncGauge(valueF))
-//
-//	var kind reflect.Kind
-//	for p, ok := n.legacyIns[0].NextPoint(); ok; {
-//		n.timer.Start()
-//		mu.RLock()
-//		context := contexts[p.Group]
-//		mu.RUnlock()
-//		// First point in window
-//		if context == nil {
-//			// Create new context
-//			c := baseReduceContext{
-//				as:         n.n.As,
-//				field:      n.n.Field,
-//				name:       p.Name,
-//				group:      p.Group,
-//				dimensions: p.Dimensions,
-//				tags:       p.PointTags(),
-//				time:       p.Time,
-//				pointTimes: n.n.PointTimes || n.isStreamTransformation,
-//			}
-//
-//			f, exists := p.Fields[c.field]
-//			if !exists {
-//				n.incrementErrorCount()
-//				n.logger.Printf("E! field %s missing from point, skipping point", c.field)
-//				p, ok = n.legacyIns[0].NextPoint()
-//				n.timer.Stop()
-//				continue
-//			}
-//
-//			k := reflect.TypeOf(f).Kind()
-//			kindChanged := k != kind
-//			kind = k
-//
-//			createFn, err := n.getCreateFn(kindChanged, kind)
-//			if err != nil {
-//				return err
-//			}
-//
-//			context = createFn(c)
-//			mu.Lock()
-//			contexts[p.Group] = context
-//			mu.Unlock()
-//
-//		}
-//		if n.isStreamTransformation {
-//			err := context.AggregatePoint(&p)
-//			if err != nil {
-//				n.incrementErrorCount()
-//				n.logger.Println("E! failed to aggregate point:", err)
-//			}
-//			p, ok = n.legacyIns[0].NextPoint()
-//
-//			err = n.emit(context)
-//			if err != nil && err != ErrEmptyEmit {
-//				n.incrementErrorCount()
-//				n.logger.Println("E! failed to emit stream:", err)
-//			}
-//		} else {
-//			if p.Time.Equal(context.Time()) {
-//				err := context.AggregatePoint(&p)
-//				if err != nil {
-//					n.incrementErrorCount()
-//					n.logger.Println("E! failed to aggregate point:", err)
-//				}
-//				// advance to next point
-//				p, ok = n.legacyIns[0].NextPoint()
-//			} else {
-//				err := n.emit(context)
-//				if err != nil {
-//					n.incrementErrorCount()
-//					n.logger.Println("E! failed to emit stream:", err)
-//				}
-//
-//				// Nil out reduced point
-//				mu.Lock()
-//				contexts[p.Group] = nil
-//				mu.Unlock()
-//				// do not advance,
-//				// go through loop again to initialize new iterator.
-//			}
-//		}
-//		n.timer.Stop()
-//	}
-//	return nil
-//}
-
-//func (n *InfluxQLNode) runBatchInfluxQL() error {
-//	var kind reflect.Kind
-//	kindChanged := true
-//	for b, ok := n.legacyIns[0].NextBatch(); ok; b, ok = n.legacyIns[0].NextBatch() {
-//		n.timer.Start()
-//		// Create new base context
-//		c := baseReduceContext{
-//			as:         n.n.As,
-//			field:      n.n.Field,
-//			name:       b.Name,
-//			group:      b.Group,
-//			dimensions: b.PointDimensions(),
-//			tags:       b.Tags,
-//			time:       b.TMax,
-//			pointTimes: n.n.PointTimes || n.isStreamTransformation,
-//		}
-//		if len(b.Points) == 0 {
-//			if !n.n.ReduceCreater.IsEmptyOK {
-//				// If the reduce does not handle empty batches continue
-//				n.timer.Stop()
-//				continue
-//			}
-//			if kind == reflect.Invalid {
-//				// If we have no points and have never seen a point assume float64
-//				kind = reflect.Float64
-//			}
-//		} else {
-//			f, ok := b.Points[0].Fields[c.field]
-//			if !ok {
-//				n.incrementErrorCount()
-//				n.logger.Printf("E! field %s missing from point, skipping batch", c.field)
-//				n.timer.Stop()
-//				continue
-//			}
-//			k := reflect.TypeOf(f).Kind()
-//			kindChanged = k != kind
-//			kind = k
-//		}
-//		createFn, err := n.getCreateFn(kindChanged, kind)
-//		if err != nil {
-//			return err
-//		}
-//
-//		context := createFn(c)
-//		if n.isStreamTransformation {
-//			// We have a stream transformation, so treat the batch as if it were a stream
-//			// Create a new batch for emitting
-//			eb := b
-//			eb.Points = make([]models.BatchPoint, 0, len(b.Points))
-//			for _, bp := range b.Points {
-//				p := models.Point{
-//					Name:   b.Name,
-//					Time:   bp.Time,
-//					Fields: bp.Fields,
-//					Tags:   bp.Tags,
-//				}
-//				if err := context.AggregatePoint(&p); err != nil {
-//					n.incrementErrorCount()
-//					n.logger.Println("E! failed to aggregate batch point:", err)
-//				}
-//				if ep, err := context.EmitPoint(); err != nil && err != ErrEmptyEmit {
-//					n.incrementErrorCount()
-//					n.logger.Println("E! failed to emit batch point:", err)
-//				} else if err != ErrEmptyEmit {
-//					eb.Points = append(eb.Points, models.BatchPoint{
-//						Time:   ep.Time,
-//						Fields: ep.Fields,
-//						Tags:   ep.Tags,
-//					})
-//				}
-//			}
-//			// Emit the complete batch
-//			n.timer.Pause()
-//			for _, out := range n.legacyOuts {
-//				if err := out.CollectBatch(eb); err != nil {
-//					n.incrementErrorCount()
-//					n.logger.Println("E! failed to emit batch points:", err)
-//				}
-//			}
-//			n.timer.Resume()
-//		} else {
-//			err := context.AggregateBatch(&b)
-//			if err == nil {
-//				if err := n.emit(context); err != nil {
-//					n.incrementErrorCount()
-//					n.logger.Println("E! failed to emit batch:", err)
-//				}
-//			} else {
-//				n.incrementErrorCount()
-//				n.logger.Println("E! failed to aggregate batch:", err)
-//			}
-//		}
-//		n.timer.Stop()
-//	}
-//	return nil
-//}
 
 func (n *InfluxQLNode) getCreateFn(kind reflect.Kind) (createReduceContextFunc, error) {
 	changed := n.currentKind != kind

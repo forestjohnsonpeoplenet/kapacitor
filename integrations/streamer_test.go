@@ -2701,7 +2701,6 @@ stream
 		.every(5s)
 	|groupBy(*)
 		.exclude('host')
-	|log()
 	|count('value')
 	|httpOut('TestStream_BatchGroupBy')
 `
@@ -4660,10 +4659,8 @@ stream
 	|window()
 		.period(10s)
 		.every(10s)
-	|log()
 	|{{ .Method }}({{ .Args }})
 		{{ if .UsePointTimes }}.usePointTimes(){{ end }}
-	|log()
 	|httpOut('TestStream_InfluxQL_Float')
 `
 	endTime := time.Date(1971, 1, 1, 0, 0, 10, 0, time.UTC)
@@ -9535,7 +9532,6 @@ stream
     |last('value')
     // Calculate the top 5 scores per game
     |groupBy('game')
-	|log()
     |top(5, 'last', 'player')
     |httpOut('TestStream_TopSelector')
 `
@@ -9573,8 +9569,70 @@ stream
 	testStreamerWithOutput(t, "TestStream_TopSelector", script, 10*time.Second, er, false, nil)
 }
 
-func TestStream_Sample(t *testing.T) {
-	t.Fatal("Add test for sample node")
+func TestStream_Sample_Count(t *testing.T) {
+	var script = `
+stream
+    |from()
+		.measurement('packets')
+    |sample(2)
+	|window()
+		.every(4s)
+		.period(4s)
+		.align()
+	|httpOut('TestStream_Sample')
+`
+
+	er := models.Result{
+		Series: models.Rows{
+			{
+				Name:    "packets",
+				Columns: []string{"time", "value"},
+				Values: [][]interface{}{
+					{
+						time.Date(1971, 1, 1, 0, 0, 4, 0, time.UTC),
+						1004.0,
+					},
+					{
+						time.Date(1971, 1, 1, 0, 0, 6, 0, time.UTC),
+						1006.0,
+					},
+				},
+			},
+		},
+	}
+
+	testStreamerWithOutput(t, "TestStream_Sample", script, 12*time.Second, er, false, nil)
+}
+
+func TestStream_Sample_Time(t *testing.T) {
+	var script = `
+stream
+    |from()
+		.measurement('packets')
+    |sample(3s)
+	|window()
+		.every(4s)
+		.period(4s)
+		.align()
+	|httpOut('TestStream_Sample')
+`
+
+	er := models.Result{
+		Series: models.Rows{
+			{
+				Name:    "packets",
+				Columns: []string{"time", "value"},
+				Values: [][]interface{}{
+					{
+						time.Date(1971, 1, 1, 0, 0, 6, 0, time.UTC),
+						1006.0,
+					},
+				},
+			},
+		},
+	}
+
+	testStreamerWithOutput(t, "TestStream_Sample", script, 12*time.Second, er, false, nil)
 }
 
 func TestStream_DerivativeCardinality(t *testing.T) {
