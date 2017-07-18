@@ -690,8 +690,11 @@ func (ts *Service) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// TODO: Why?
+	if task.TemplateID == "" {
+		task.Type = pn.TaskType()
+	}
 	task.DBRPs = append(task.DBRPs, pn.DBRPs()...)
-	task.Type = pn.TaskType()
 
 	newTask := Task{
 		ID: task.ID,
