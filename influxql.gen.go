@@ -12,9 +12,43 @@ import (
 	"time"
 
 	"github.com/influxdata/influxdb/influxql"
+	"github.com/influxdata/kapacitor/edge"
 	"github.com/influxdata/kapacitor/models"
 	"github.com/influxdata/kapacitor/pipeline"
 )
+
+func convertFloatPoint(
+	name string,
+	p edge.FieldsTagsTimeGetter,
+	field string,
+	isSimpleSelector bool,
+	topBottomInfo *pipeline.TopBottomCallInfo,
+) (*influxql.FloatPoint, error) {
+	value, ok := p.Fields()[field]
+	if !ok {
+		return nil, fmt.Errorf("field %s missing from point cannot aggregate", field)
+	}
+	typed, ok := value.(float64)
+	if !ok {
+		return nil, fmt.Errorf("field %s has wrong type: got %T exp float64", field, value)
+	}
+	ap := &influxql.FloatPoint{
+		Name:  name,
+		Tags:  influxql.NewTags(p.Tags()),
+		Time:  p.Time().UnixNano(),
+		Value: typed,
+	}
+	if topBottomInfo != nil {
+		// We need to populate the Aux fields
+		floatPopulateAuxFieldsAndTags(ap, topBottomInfo.FieldsAndTags, p.Fields(), p.Tags())
+	}
+
+	if isSimpleSelector {
+		ap.Aux = []interface{}{p.Tags(), p.Fields()}
+	}
+
+	return ap, nil
+}
 
 type floatPointAggregator struct {
 	field            string
@@ -34,60 +68,11 @@ func floatPopulateAuxFieldsAndTags(ap *influxql.FloatPoint, fieldsAndTags []stri
 	}
 }
 
-func (a *floatPointAggregator) AggregateBatch(b *models.Batch) error {
-	for _, p := range b.Points {
-		value, ok := p.Fields[a.field]
-		if !ok {
-			return fmt.Errorf("field %s missing from point cannot aggregate", a.field)
-		}
-		typed, ok := value.(float64)
-		if !ok {
-			return fmt.Errorf("field %s has wrong type: got %T exp float64", a.field, value)
-		}
-		ap := &influxql.FloatPoint{
-			Name:  b.Name,
-			Tags:  influxql.NewTags(p.Tags),
-			Time:  p.Time.UnixNano(),
-			Value: typed,
-		}
-		if a.topBottomInfo != nil {
-			// We need to populate the Aux fields
-			floatPopulateAuxFieldsAndTags(ap, a.topBottomInfo.FieldsAndTags, p.Fields, p.Tags)
-		}
-
-		if a.isSimpleSelector {
-			ap.Aux = []interface{}{p.Tags, p.Fields}
-		}
-
-		a.aggregator.AggregateFloat(ap)
+func (a *floatPointAggregator) AggregatePoint(name string, p edge.FieldsTagsTimeGetter) error {
+	ap, err := convertFloatPoint(name, p, a.field, a.isSimpleSelector, a.topBottomInfo)
+	if err != nil {
+		return nil
 	}
-	return nil
-}
-
-func (a *floatPointAggregator) AggregatePoint(p *models.Point) error {
-	value, ok := p.Fields[a.field]
-	if !ok {
-		return fmt.Errorf("field %s missing from point cannot aggregate", a.field)
-	}
-	typed, ok := value.(float64)
-	if !ok {
-		return fmt.Errorf("field %s has wrong type: got %T exp float64", a.field, value)
-	}
-	ap := &influxql.FloatPoint{
-		Name:  p.Name,
-		Tags:  influxql.NewTags(p.Tags),
-		Time:  p.Time.UnixNano(),
-		Value: typed,
-	}
-	if a.topBottomInfo != nil {
-		// We need to populate the Aux fields
-		floatPopulateAuxFieldsAndTags(ap, a.topBottomInfo.FieldsAndTags, p.Fields, p.Tags)
-	}
-
-	if a.isSimpleSelector {
-		ap.Aux = []interface{}{p.Tags, p.Fields}
-	}
-
 	a.aggregator.AggregateFloat(ap)
 	return nil
 }
@@ -99,60 +84,11 @@ type floatPointBulkAggregator struct {
 	aggregator       pipeline.FloatBulkPointAggregator
 }
 
-func (a *floatPointBulkAggregator) AggregateBatch(b *models.Batch) error {
-	slice := make([]influxql.FloatPoint, len(b.Points))
-	for i, p := range b.Points {
-		value, ok := p.Fields[a.field]
-		if !ok {
-			return fmt.Errorf("field %s missing from point cannot aggregate", a.field)
-		}
-		typed, ok := value.(float64)
-		if !ok {
-			return fmt.Errorf("field %s has wrong type: got %T exp float64", a.field, value)
-		}
-		slice[i] = influxql.FloatPoint{
-			Name:  b.Name,
-			Tags:  influxql.NewTags(p.Tags),
-			Time:  p.Time.UnixNano(),
-			Value: typed,
-		}
-		if a.topBottomInfo != nil {
-			// We need to populate the Aux fields
-			floatPopulateAuxFieldsAndTags(&slice[i], a.topBottomInfo.FieldsAndTags, p.Fields, p.Tags)
-		}
-
-		if a.isSimpleSelector {
-			slice[i].Aux = []interface{}{p.Tags, p.Fields}
-		}
+func (a *floatPointBulkAggregator) AggregatePoint(name string, p edge.FieldsTagsTimeGetter) error {
+	ap, err := convertFloatPoint(name, p, a.field, a.isSimpleSelector, a.topBottomInfo)
+	if err != nil {
+		return err
 	}
-	a.aggregator.AggregateFloatBulk(slice)
-	return nil
-}
-
-func (a *floatPointBulkAggregator) AggregatePoint(p *models.Point) error {
-	value, ok := p.Fields[a.field]
-	if !ok {
-		return fmt.Errorf("field %s missing from point cannot aggregate", a.field)
-	}
-	typed, ok := value.(float64)
-	if !ok {
-		return fmt.Errorf("field %s has wrong type: got %T exp float64", a.field, value)
-	}
-	ap := &influxql.FloatPoint{
-		Name:  p.Name,
-		Tags:  influxql.NewTags(p.Tags),
-		Time:  p.Time.UnixNano(),
-		Value: typed,
-	}
-	if a.topBottomInfo != nil {
-		// We need to populate the Aux fields
-		floatPopulateAuxFieldsAndTags(ap, a.topBottomInfo.FieldsAndTags, p.Fields, p.Tags)
-	}
-
-	if a.isSimpleSelector {
-		ap.Aux = []interface{}{p.Tags, p.Fields}
-	}
-
 	a.aggregator.AggregateFloat(ap)
 	return nil
 }
@@ -164,10 +100,10 @@ type floatPointEmitter struct {
 	byName           bool
 }
 
-func (e *floatPointEmitter) EmitPoint() (models.Point, error) {
+func (e *floatPointEmitter) EmitPoint() (edge.PointMessage, error) {
 	slice := e.emitter.Emit()
 	if len(slice) != 1 {
-		return models.Point{}, ErrEmptyEmit
+		return nil, nil
 	}
 	ap := slice[0]
 	var t time.Time
@@ -192,30 +128,29 @@ func (e *floatPointEmitter) EmitPoint() (models.Point, error) {
 			delete(fields, e.field)
 		}
 	} else {
-		tags = e.tags
+		tags = e.groupInfo.Tags
 		fields = map[string]interface{}{e.as: ap.Value}
 	}
 
-	return models.Point{
-		Name:       e.name,
-		Time:       t,
-		Group:      e.group,
-		Dimensions: e.dimensions,
-		Tags:       tags,
-		Fields:     fields,
-	}, nil
+	return edge.NewPointMessage(
+		e.name, "", "",
+		e.groupInfo.Dimensions,
+		fields,
+		tags,
+		t,
+	), nil
 }
 
-func (e *floatPointEmitter) EmitBatch() models.Batch {
+func (e *floatPointEmitter) EmitBatch() edge.BufferedBatchMessage {
 	slice := e.emitter.Emit()
-	b := models.Batch{
-		Name:   e.name,
-		TMax:   e.time,
-		Group:  e.group,
-		ByName: e.dimensions.ByName,
-		Tags:   e.tags,
-		Points: make([]models.BatchPoint, len(slice)),
-	}
+	begin := edge.NewBeginBatchMessage(
+		e.name,
+		e.groupInfo.Tags,
+		e.groupInfo.Dimensions.ByName,
+		e.time,
+		len(slice),
+	)
+	points := make([]edge.BatchPointMessage, len(slice))
 	var t time.Time
 	for i, ap := range slice {
 		if e.pointTimes {
@@ -230,26 +165,63 @@ func (e *floatPointEmitter) EmitBatch() models.Batch {
 		var tags models.Tags
 		if l := len(ap.Tags.KeyValues()); l > 0 {
 			// Merge batch and point specific tags
-			tags = make(models.Tags, len(e.tags)+l)
-			for k, v := range e.tags {
+			tags = make(models.Tags, len(e.groupInfo.Tags)+l)
+			for k, v := range e.groupInfo.Tags {
 				tags[k] = v
 			}
 			for k, v := range ap.Tags.KeyValues() {
 				tags[k] = v
 			}
 		} else {
-			tags = e.tags
+			tags = e.groupInfo.Tags
 		}
-		b.Points[i] = models.BatchPoint{
-			Time:   t,
-			Tags:   tags,
-			Fields: map[string]interface{}{e.as: ap.Value},
-		}
-		if t.After(b.TMax) {
-			b.TMax = t
+		points[i] = edge.NewBatchPointMessage(
+			models.Fields{e.as: ap.Value},
+			tags,
+			t,
+		)
+		if t.After(begin.Time()) {
+			begin.SetTime(t)
 		}
 	}
-	return b
+	return edge.NewBufferedBatchMessage(
+		begin,
+		points,
+		edge.NewEndBatchMessage(),
+	)
+}
+
+func convertIntegerPoint(
+	name string,
+	p edge.FieldsTagsTimeGetter,
+	field string,
+	isSimpleSelector bool,
+	topBottomInfo *pipeline.TopBottomCallInfo,
+) (*influxql.IntegerPoint, error) {
+	value, ok := p.Fields()[field]
+	if !ok {
+		return nil, fmt.Errorf("field %s missing from point cannot aggregate", field)
+	}
+	typed, ok := value.(int64)
+	if !ok {
+		return nil, fmt.Errorf("field %s has wrong type: got %T exp int64", field, value)
+	}
+	ap := &influxql.IntegerPoint{
+		Name:  name,
+		Tags:  influxql.NewTags(p.Tags()),
+		Time:  p.Time().UnixNano(),
+		Value: typed,
+	}
+	if topBottomInfo != nil {
+		// We need to populate the Aux fields
+		integerPopulateAuxFieldsAndTags(ap, topBottomInfo.FieldsAndTags, p.Fields(), p.Tags())
+	}
+
+	if isSimpleSelector {
+		ap.Aux = []interface{}{p.Tags(), p.Fields()}
+	}
+
+	return ap, nil
 }
 
 type integerPointAggregator struct {
@@ -270,60 +242,11 @@ func integerPopulateAuxFieldsAndTags(ap *influxql.IntegerPoint, fieldsAndTags []
 	}
 }
 
-func (a *integerPointAggregator) AggregateBatch(b *models.Batch) error {
-	for _, p := range b.Points {
-		value, ok := p.Fields[a.field]
-		if !ok {
-			return fmt.Errorf("field %s missing from point cannot aggregate", a.field)
-		}
-		typed, ok := value.(int64)
-		if !ok {
-			return fmt.Errorf("field %s has wrong type: got %T exp int64", a.field, value)
-		}
-		ap := &influxql.IntegerPoint{
-			Name:  b.Name,
-			Tags:  influxql.NewTags(p.Tags),
-			Time:  p.Time.UnixNano(),
-			Value: typed,
-		}
-		if a.topBottomInfo != nil {
-			// We need to populate the Aux fields
-			integerPopulateAuxFieldsAndTags(ap, a.topBottomInfo.FieldsAndTags, p.Fields, p.Tags)
-		}
-
-		if a.isSimpleSelector {
-			ap.Aux = []interface{}{p.Tags, p.Fields}
-		}
-
-		a.aggregator.AggregateInteger(ap)
+func (a *integerPointAggregator) AggregatePoint(name string, p edge.FieldsTagsTimeGetter) error {
+	ap, err := convertIntegerPoint(name, p, a.field, a.isSimpleSelector, a.topBottomInfo)
+	if err != nil {
+		return nil
 	}
-	return nil
-}
-
-func (a *integerPointAggregator) AggregatePoint(p *models.Point) error {
-	value, ok := p.Fields[a.field]
-	if !ok {
-		return fmt.Errorf("field %s missing from point cannot aggregate", a.field)
-	}
-	typed, ok := value.(int64)
-	if !ok {
-		return fmt.Errorf("field %s has wrong type: got %T exp int64", a.field, value)
-	}
-	ap := &influxql.IntegerPoint{
-		Name:  p.Name,
-		Tags:  influxql.NewTags(p.Tags),
-		Time:  p.Time.UnixNano(),
-		Value: typed,
-	}
-	if a.topBottomInfo != nil {
-		// We need to populate the Aux fields
-		integerPopulateAuxFieldsAndTags(ap, a.topBottomInfo.FieldsAndTags, p.Fields, p.Tags)
-	}
-
-	if a.isSimpleSelector {
-		ap.Aux = []interface{}{p.Tags, p.Fields}
-	}
-
 	a.aggregator.AggregateInteger(ap)
 	return nil
 }
@@ -335,60 +258,11 @@ type integerPointBulkAggregator struct {
 	aggregator       pipeline.IntegerBulkPointAggregator
 }
 
-func (a *integerPointBulkAggregator) AggregateBatch(b *models.Batch) error {
-	slice := make([]influxql.IntegerPoint, len(b.Points))
-	for i, p := range b.Points {
-		value, ok := p.Fields[a.field]
-		if !ok {
-			return fmt.Errorf("field %s missing from point cannot aggregate", a.field)
-		}
-		typed, ok := value.(int64)
-		if !ok {
-			return fmt.Errorf("field %s has wrong type: got %T exp int64", a.field, value)
-		}
-		slice[i] = influxql.IntegerPoint{
-			Name:  b.Name,
-			Tags:  influxql.NewTags(p.Tags),
-			Time:  p.Time.UnixNano(),
-			Value: typed,
-		}
-		if a.topBottomInfo != nil {
-			// We need to populate the Aux fields
-			integerPopulateAuxFieldsAndTags(&slice[i], a.topBottomInfo.FieldsAndTags, p.Fields, p.Tags)
-		}
-
-		if a.isSimpleSelector {
-			slice[i].Aux = []interface{}{p.Tags, p.Fields}
-		}
+func (a *integerPointBulkAggregator) AggregatePoint(name string, p edge.FieldsTagsTimeGetter) error {
+	ap, err := convertIntegerPoint(name, p, a.field, a.isSimpleSelector, a.topBottomInfo)
+	if err != nil {
+		return err
 	}
-	a.aggregator.AggregateIntegerBulk(slice)
-	return nil
-}
-
-func (a *integerPointBulkAggregator) AggregatePoint(p *models.Point) error {
-	value, ok := p.Fields[a.field]
-	if !ok {
-		return fmt.Errorf("field %s missing from point cannot aggregate", a.field)
-	}
-	typed, ok := value.(int64)
-	if !ok {
-		return fmt.Errorf("field %s has wrong type: got %T exp int64", a.field, value)
-	}
-	ap := &influxql.IntegerPoint{
-		Name:  p.Name,
-		Tags:  influxql.NewTags(p.Tags),
-		Time:  p.Time.UnixNano(),
-		Value: typed,
-	}
-	if a.topBottomInfo != nil {
-		// We need to populate the Aux fields
-		integerPopulateAuxFieldsAndTags(ap, a.topBottomInfo.FieldsAndTags, p.Fields, p.Tags)
-	}
-
-	if a.isSimpleSelector {
-		ap.Aux = []interface{}{p.Tags, p.Fields}
-	}
-
 	a.aggregator.AggregateInteger(ap)
 	return nil
 }
@@ -400,10 +274,10 @@ type integerPointEmitter struct {
 	byName           bool
 }
 
-func (e *integerPointEmitter) EmitPoint() (models.Point, error) {
+func (e *integerPointEmitter) EmitPoint() (edge.PointMessage, error) {
 	slice := e.emitter.Emit()
 	if len(slice) != 1 {
-		return models.Point{}, ErrEmptyEmit
+		return nil, nil
 	}
 	ap := slice[0]
 	var t time.Time
@@ -428,30 +302,29 @@ func (e *integerPointEmitter) EmitPoint() (models.Point, error) {
 			delete(fields, e.field)
 		}
 	} else {
-		tags = e.tags
+		tags = e.groupInfo.Tags
 		fields = map[string]interface{}{e.as: ap.Value}
 	}
 
-	return models.Point{
-		Name:       e.name,
-		Time:       t,
-		Group:      e.group,
-		Dimensions: e.dimensions,
-		Tags:       tags,
-		Fields:     fields,
-	}, nil
+	return edge.NewPointMessage(
+		e.name, "", "",
+		e.groupInfo.Dimensions,
+		fields,
+		tags,
+		t,
+	), nil
 }
 
-func (e *integerPointEmitter) EmitBatch() models.Batch {
+func (e *integerPointEmitter) EmitBatch() edge.BufferedBatchMessage {
 	slice := e.emitter.Emit()
-	b := models.Batch{
-		Name:   e.name,
-		TMax:   e.time,
-		Group:  e.group,
-		ByName: e.dimensions.ByName,
-		Tags:   e.tags,
-		Points: make([]models.BatchPoint, len(slice)),
-	}
+	begin := edge.NewBeginBatchMessage(
+		e.name,
+		e.groupInfo.Tags,
+		e.groupInfo.Dimensions.ByName,
+		e.time,
+		len(slice),
+	)
+	points := make([]edge.BatchPointMessage, len(slice))
 	var t time.Time
 	for i, ap := range slice {
 		if e.pointTimes {
@@ -466,26 +339,63 @@ func (e *integerPointEmitter) EmitBatch() models.Batch {
 		var tags models.Tags
 		if l := len(ap.Tags.KeyValues()); l > 0 {
 			// Merge batch and point specific tags
-			tags = make(models.Tags, len(e.tags)+l)
-			for k, v := range e.tags {
+			tags = make(models.Tags, len(e.groupInfo.Tags)+l)
+			for k, v := range e.groupInfo.Tags {
 				tags[k] = v
 			}
 			for k, v := range ap.Tags.KeyValues() {
 				tags[k] = v
 			}
 		} else {
-			tags = e.tags
+			tags = e.groupInfo.Tags
 		}
-		b.Points[i] = models.BatchPoint{
-			Time:   t,
-			Tags:   tags,
-			Fields: map[string]interface{}{e.as: ap.Value},
-		}
-		if t.After(b.TMax) {
-			b.TMax = t
+		points[i] = edge.NewBatchPointMessage(
+			models.Fields{e.as: ap.Value},
+			tags,
+			t,
+		)
+		if t.After(begin.Time()) {
+			begin.SetTime(t)
 		}
 	}
-	return b
+	return edge.NewBufferedBatchMessage(
+		begin,
+		points,
+		edge.NewEndBatchMessage(),
+	)
+}
+
+func convertStringPoint(
+	name string,
+	p edge.FieldsTagsTimeGetter,
+	field string,
+	isSimpleSelector bool,
+	topBottomInfo *pipeline.TopBottomCallInfo,
+) (*influxql.StringPoint, error) {
+	value, ok := p.Fields()[field]
+	if !ok {
+		return nil, fmt.Errorf("field %s missing from point cannot aggregate", field)
+	}
+	typed, ok := value.(string)
+	if !ok {
+		return nil, fmt.Errorf("field %s has wrong type: got %T exp string", field, value)
+	}
+	ap := &influxql.StringPoint{
+		Name:  name,
+		Tags:  influxql.NewTags(p.Tags()),
+		Time:  p.Time().UnixNano(),
+		Value: typed,
+	}
+	if topBottomInfo != nil {
+		// We need to populate the Aux fields
+		stringPopulateAuxFieldsAndTags(ap, topBottomInfo.FieldsAndTags, p.Fields(), p.Tags())
+	}
+
+	if isSimpleSelector {
+		ap.Aux = []interface{}{p.Tags(), p.Fields()}
+	}
+
+	return ap, nil
 }
 
 type stringPointAggregator struct {
@@ -506,60 +416,11 @@ func stringPopulateAuxFieldsAndTags(ap *influxql.StringPoint, fieldsAndTags []st
 	}
 }
 
-func (a *stringPointAggregator) AggregateBatch(b *models.Batch) error {
-	for _, p := range b.Points {
-		value, ok := p.Fields[a.field]
-		if !ok {
-			return fmt.Errorf("field %s missing from point cannot aggregate", a.field)
-		}
-		typed, ok := value.(string)
-		if !ok {
-			return fmt.Errorf("field %s has wrong type: got %T exp string", a.field, value)
-		}
-		ap := &influxql.StringPoint{
-			Name:  b.Name,
-			Tags:  influxql.NewTags(p.Tags),
-			Time:  p.Time.UnixNano(),
-			Value: typed,
-		}
-		if a.topBottomInfo != nil {
-			// We need to populate the Aux fields
-			stringPopulateAuxFieldsAndTags(ap, a.topBottomInfo.FieldsAndTags, p.Fields, p.Tags)
-		}
-
-		if a.isSimpleSelector {
-			ap.Aux = []interface{}{p.Tags, p.Fields}
-		}
-
-		a.aggregator.AggregateString(ap)
+func (a *stringPointAggregator) AggregatePoint(name string, p edge.FieldsTagsTimeGetter) error {
+	ap, err := convertStringPoint(name, p, a.field, a.isSimpleSelector, a.topBottomInfo)
+	if err != nil {
+		return nil
 	}
-	return nil
-}
-
-func (a *stringPointAggregator) AggregatePoint(p *models.Point) error {
-	value, ok := p.Fields[a.field]
-	if !ok {
-		return fmt.Errorf("field %s missing from point cannot aggregate", a.field)
-	}
-	typed, ok := value.(string)
-	if !ok {
-		return fmt.Errorf("field %s has wrong type: got %T exp string", a.field, value)
-	}
-	ap := &influxql.StringPoint{
-		Name:  p.Name,
-		Tags:  influxql.NewTags(p.Tags),
-		Time:  p.Time.UnixNano(),
-		Value: typed,
-	}
-	if a.topBottomInfo != nil {
-		// We need to populate the Aux fields
-		stringPopulateAuxFieldsAndTags(ap, a.topBottomInfo.FieldsAndTags, p.Fields, p.Tags)
-	}
-
-	if a.isSimpleSelector {
-		ap.Aux = []interface{}{p.Tags, p.Fields}
-	}
-
 	a.aggregator.AggregateString(ap)
 	return nil
 }
@@ -571,60 +432,11 @@ type stringPointBulkAggregator struct {
 	aggregator       pipeline.StringBulkPointAggregator
 }
 
-func (a *stringPointBulkAggregator) AggregateBatch(b *models.Batch) error {
-	slice := make([]influxql.StringPoint, len(b.Points))
-	for i, p := range b.Points {
-		value, ok := p.Fields[a.field]
-		if !ok {
-			return fmt.Errorf("field %s missing from point cannot aggregate", a.field)
-		}
-		typed, ok := value.(string)
-		if !ok {
-			return fmt.Errorf("field %s has wrong type: got %T exp string", a.field, value)
-		}
-		slice[i] = influxql.StringPoint{
-			Name:  b.Name,
-			Tags:  influxql.NewTags(p.Tags),
-			Time:  p.Time.UnixNano(),
-			Value: typed,
-		}
-		if a.topBottomInfo != nil {
-			// We need to populate the Aux fields
-			stringPopulateAuxFieldsAndTags(&slice[i], a.topBottomInfo.FieldsAndTags, p.Fields, p.Tags)
-		}
-
-		if a.isSimpleSelector {
-			slice[i].Aux = []interface{}{p.Tags, p.Fields}
-		}
+func (a *stringPointBulkAggregator) AggregatePoint(name string, p edge.FieldsTagsTimeGetter) error {
+	ap, err := convertStringPoint(name, p, a.field, a.isSimpleSelector, a.topBottomInfo)
+	if err != nil {
+		return err
 	}
-	a.aggregator.AggregateStringBulk(slice)
-	return nil
-}
-
-func (a *stringPointBulkAggregator) AggregatePoint(p *models.Point) error {
-	value, ok := p.Fields[a.field]
-	if !ok {
-		return fmt.Errorf("field %s missing from point cannot aggregate", a.field)
-	}
-	typed, ok := value.(string)
-	if !ok {
-		return fmt.Errorf("field %s has wrong type: got %T exp string", a.field, value)
-	}
-	ap := &influxql.StringPoint{
-		Name:  p.Name,
-		Tags:  influxql.NewTags(p.Tags),
-		Time:  p.Time.UnixNano(),
-		Value: typed,
-	}
-	if a.topBottomInfo != nil {
-		// We need to populate the Aux fields
-		stringPopulateAuxFieldsAndTags(ap, a.topBottomInfo.FieldsAndTags, p.Fields, p.Tags)
-	}
-
-	if a.isSimpleSelector {
-		ap.Aux = []interface{}{p.Tags, p.Fields}
-	}
-
 	a.aggregator.AggregateString(ap)
 	return nil
 }
@@ -636,10 +448,10 @@ type stringPointEmitter struct {
 	byName           bool
 }
 
-func (e *stringPointEmitter) EmitPoint() (models.Point, error) {
+func (e *stringPointEmitter) EmitPoint() (edge.PointMessage, error) {
 	slice := e.emitter.Emit()
 	if len(slice) != 1 {
-		return models.Point{}, ErrEmptyEmit
+		return nil, nil
 	}
 	ap := slice[0]
 	var t time.Time
@@ -664,30 +476,29 @@ func (e *stringPointEmitter) EmitPoint() (models.Point, error) {
 			delete(fields, e.field)
 		}
 	} else {
-		tags = e.tags
+		tags = e.groupInfo.Tags
 		fields = map[string]interface{}{e.as: ap.Value}
 	}
 
-	return models.Point{
-		Name:       e.name,
-		Time:       t,
-		Group:      e.group,
-		Dimensions: e.dimensions,
-		Tags:       tags,
-		Fields:     fields,
-	}, nil
+	return edge.NewPointMessage(
+		e.name, "", "",
+		e.groupInfo.Dimensions,
+		fields,
+		tags,
+		t,
+	), nil
 }
 
-func (e *stringPointEmitter) EmitBatch() models.Batch {
+func (e *stringPointEmitter) EmitBatch() edge.BufferedBatchMessage {
 	slice := e.emitter.Emit()
-	b := models.Batch{
-		Name:   e.name,
-		TMax:   e.time,
-		Group:  e.group,
-		ByName: e.dimensions.ByName,
-		Tags:   e.tags,
-		Points: make([]models.BatchPoint, len(slice)),
-	}
+	begin := edge.NewBeginBatchMessage(
+		e.name,
+		e.groupInfo.Tags,
+		e.groupInfo.Dimensions.ByName,
+		e.time,
+		len(slice),
+	)
+	points := make([]edge.BatchPointMessage, len(slice))
 	var t time.Time
 	for i, ap := range slice {
 		if e.pointTimes {
@@ -702,26 +513,63 @@ func (e *stringPointEmitter) EmitBatch() models.Batch {
 		var tags models.Tags
 		if l := len(ap.Tags.KeyValues()); l > 0 {
 			// Merge batch and point specific tags
-			tags = make(models.Tags, len(e.tags)+l)
-			for k, v := range e.tags {
+			tags = make(models.Tags, len(e.groupInfo.Tags)+l)
+			for k, v := range e.groupInfo.Tags {
 				tags[k] = v
 			}
 			for k, v := range ap.Tags.KeyValues() {
 				tags[k] = v
 			}
 		} else {
-			tags = e.tags
+			tags = e.groupInfo.Tags
 		}
-		b.Points[i] = models.BatchPoint{
-			Time:   t,
-			Tags:   tags,
-			Fields: map[string]interface{}{e.as: ap.Value},
-		}
-		if t.After(b.TMax) {
-			b.TMax = t
+		points[i] = edge.NewBatchPointMessage(
+			models.Fields{e.as: ap.Value},
+			tags,
+			t,
+		)
+		if t.After(begin.Time()) {
+			begin.SetTime(t)
 		}
 	}
-	return b
+	return edge.NewBufferedBatchMessage(
+		begin,
+		points,
+		edge.NewEndBatchMessage(),
+	)
+}
+
+func convertBooleanPoint(
+	name string,
+	p edge.FieldsTagsTimeGetter,
+	field string,
+	isSimpleSelector bool,
+	topBottomInfo *pipeline.TopBottomCallInfo,
+) (*influxql.BooleanPoint, error) {
+	value, ok := p.Fields()[field]
+	if !ok {
+		return nil, fmt.Errorf("field %s missing from point cannot aggregate", field)
+	}
+	typed, ok := value.(bool)
+	if !ok {
+		return nil, fmt.Errorf("field %s has wrong type: got %T exp bool", field, value)
+	}
+	ap := &influxql.BooleanPoint{
+		Name:  name,
+		Tags:  influxql.NewTags(p.Tags()),
+		Time:  p.Time().UnixNano(),
+		Value: typed,
+	}
+	if topBottomInfo != nil {
+		// We need to populate the Aux fields
+		booleanPopulateAuxFieldsAndTags(ap, topBottomInfo.FieldsAndTags, p.Fields(), p.Tags())
+	}
+
+	if isSimpleSelector {
+		ap.Aux = []interface{}{p.Tags(), p.Fields()}
+	}
+
+	return ap, nil
 }
 
 type booleanPointAggregator struct {
@@ -742,60 +590,11 @@ func booleanPopulateAuxFieldsAndTags(ap *influxql.BooleanPoint, fieldsAndTags []
 	}
 }
 
-func (a *booleanPointAggregator) AggregateBatch(b *models.Batch) error {
-	for _, p := range b.Points {
-		value, ok := p.Fields[a.field]
-		if !ok {
-			return fmt.Errorf("field %s missing from point cannot aggregate", a.field)
-		}
-		typed, ok := value.(bool)
-		if !ok {
-			return fmt.Errorf("field %s has wrong type: got %T exp bool", a.field, value)
-		}
-		ap := &influxql.BooleanPoint{
-			Name:  b.Name,
-			Tags:  influxql.NewTags(p.Tags),
-			Time:  p.Time.UnixNano(),
-			Value: typed,
-		}
-		if a.topBottomInfo != nil {
-			// We need to populate the Aux fields
-			booleanPopulateAuxFieldsAndTags(ap, a.topBottomInfo.FieldsAndTags, p.Fields, p.Tags)
-		}
-
-		if a.isSimpleSelector {
-			ap.Aux = []interface{}{p.Tags, p.Fields}
-		}
-
-		a.aggregator.AggregateBoolean(ap)
+func (a *booleanPointAggregator) AggregatePoint(name string, p edge.FieldsTagsTimeGetter) error {
+	ap, err := convertBooleanPoint(name, p, a.field, a.isSimpleSelector, a.topBottomInfo)
+	if err != nil {
+		return nil
 	}
-	return nil
-}
-
-func (a *booleanPointAggregator) AggregatePoint(p *models.Point) error {
-	value, ok := p.Fields[a.field]
-	if !ok {
-		return fmt.Errorf("field %s missing from point cannot aggregate", a.field)
-	}
-	typed, ok := value.(bool)
-	if !ok {
-		return fmt.Errorf("field %s has wrong type: got %T exp bool", a.field, value)
-	}
-	ap := &influxql.BooleanPoint{
-		Name:  p.Name,
-		Tags:  influxql.NewTags(p.Tags),
-		Time:  p.Time.UnixNano(),
-		Value: typed,
-	}
-	if a.topBottomInfo != nil {
-		// We need to populate the Aux fields
-		booleanPopulateAuxFieldsAndTags(ap, a.topBottomInfo.FieldsAndTags, p.Fields, p.Tags)
-	}
-
-	if a.isSimpleSelector {
-		ap.Aux = []interface{}{p.Tags, p.Fields}
-	}
-
 	a.aggregator.AggregateBoolean(ap)
 	return nil
 }
@@ -807,60 +606,11 @@ type booleanPointBulkAggregator struct {
 	aggregator       pipeline.BooleanBulkPointAggregator
 }
 
-func (a *booleanPointBulkAggregator) AggregateBatch(b *models.Batch) error {
-	slice := make([]influxql.BooleanPoint, len(b.Points))
-	for i, p := range b.Points {
-		value, ok := p.Fields[a.field]
-		if !ok {
-			return fmt.Errorf("field %s missing from point cannot aggregate", a.field)
-		}
-		typed, ok := value.(bool)
-		if !ok {
-			return fmt.Errorf("field %s has wrong type: got %T exp bool", a.field, value)
-		}
-		slice[i] = influxql.BooleanPoint{
-			Name:  b.Name,
-			Tags:  influxql.NewTags(p.Tags),
-			Time:  p.Time.UnixNano(),
-			Value: typed,
-		}
-		if a.topBottomInfo != nil {
-			// We need to populate the Aux fields
-			booleanPopulateAuxFieldsAndTags(&slice[i], a.topBottomInfo.FieldsAndTags, p.Fields, p.Tags)
-		}
-
-		if a.isSimpleSelector {
-			slice[i].Aux = []interface{}{p.Tags, p.Fields}
-		}
+func (a *booleanPointBulkAggregator) AggregatePoint(name string, p edge.FieldsTagsTimeGetter) error {
+	ap, err := convertBooleanPoint(name, p, a.field, a.isSimpleSelector, a.topBottomInfo)
+	if err != nil {
+		return err
 	}
-	a.aggregator.AggregateBooleanBulk(slice)
-	return nil
-}
-
-func (a *booleanPointBulkAggregator) AggregatePoint(p *models.Point) error {
-	value, ok := p.Fields[a.field]
-	if !ok {
-		return fmt.Errorf("field %s missing from point cannot aggregate", a.field)
-	}
-	typed, ok := value.(bool)
-	if !ok {
-		return fmt.Errorf("field %s has wrong type: got %T exp bool", a.field, value)
-	}
-	ap := &influxql.BooleanPoint{
-		Name:  p.Name,
-		Tags:  influxql.NewTags(p.Tags),
-		Time:  p.Time.UnixNano(),
-		Value: typed,
-	}
-	if a.topBottomInfo != nil {
-		// We need to populate the Aux fields
-		booleanPopulateAuxFieldsAndTags(ap, a.topBottomInfo.FieldsAndTags, p.Fields, p.Tags)
-	}
-
-	if a.isSimpleSelector {
-		ap.Aux = []interface{}{p.Tags, p.Fields}
-	}
-
 	a.aggregator.AggregateBoolean(ap)
 	return nil
 }
@@ -872,10 +622,10 @@ type booleanPointEmitter struct {
 	byName           bool
 }
 
-func (e *booleanPointEmitter) EmitPoint() (models.Point, error) {
+func (e *booleanPointEmitter) EmitPoint() (edge.PointMessage, error) {
 	slice := e.emitter.Emit()
 	if len(slice) != 1 {
-		return models.Point{}, ErrEmptyEmit
+		return nil, nil
 	}
 	ap := slice[0]
 	var t time.Time
@@ -900,30 +650,29 @@ func (e *booleanPointEmitter) EmitPoint() (models.Point, error) {
 			delete(fields, e.field)
 		}
 	} else {
-		tags = e.tags
+		tags = e.groupInfo.Tags
 		fields = map[string]interface{}{e.as: ap.Value}
 	}
 
-	return models.Point{
-		Name:       e.name,
-		Time:       t,
-		Group:      e.group,
-		Dimensions: e.dimensions,
-		Tags:       tags,
-		Fields:     fields,
-	}, nil
+	return edge.NewPointMessage(
+		e.name, "", "",
+		e.groupInfo.Dimensions,
+		fields,
+		tags,
+		t,
+	), nil
 }
 
-func (e *booleanPointEmitter) EmitBatch() models.Batch {
+func (e *booleanPointEmitter) EmitBatch() edge.BufferedBatchMessage {
 	slice := e.emitter.Emit()
-	b := models.Batch{
-		Name:   e.name,
-		TMax:   e.time,
-		Group:  e.group,
-		ByName: e.dimensions.ByName,
-		Tags:   e.tags,
-		Points: make([]models.BatchPoint, len(slice)),
-	}
+	begin := edge.NewBeginBatchMessage(
+		e.name,
+		e.groupInfo.Tags,
+		e.groupInfo.Dimensions.ByName,
+		e.time,
+		len(slice),
+	)
+	points := make([]edge.BatchPointMessage, len(slice))
 	var t time.Time
 	for i, ap := range slice {
 		if e.pointTimes {
@@ -938,26 +687,30 @@ func (e *booleanPointEmitter) EmitBatch() models.Batch {
 		var tags models.Tags
 		if l := len(ap.Tags.KeyValues()); l > 0 {
 			// Merge batch and point specific tags
-			tags = make(models.Tags, len(e.tags)+l)
-			for k, v := range e.tags {
+			tags = make(models.Tags, len(e.groupInfo.Tags)+l)
+			for k, v := range e.groupInfo.Tags {
 				tags[k] = v
 			}
 			for k, v := range ap.Tags.KeyValues() {
 				tags[k] = v
 			}
 		} else {
-			tags = e.tags
+			tags = e.groupInfo.Tags
 		}
-		b.Points[i] = models.BatchPoint{
-			Time:   t,
-			Tags:   tags,
-			Fields: map[string]interface{}{e.as: ap.Value},
-		}
-		if t.After(b.TMax) {
-			b.TMax = t
+		points[i] = edge.NewBatchPointMessage(
+			models.Fields{e.as: ap.Value},
+			tags,
+			t,
+		)
+		if t.After(begin.Time()) {
+			begin.SetTime(t)
 		}
 	}
-	return b
+	return edge.NewBufferedBatchMessage(
+		begin,
+		points,
+		edge.NewEndBatchMessage(),
+	)
 }
 
 // floatReduceContext uses composition to implement the reduceContext interface
