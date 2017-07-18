@@ -1857,7 +1857,7 @@ func (ts *Service) templateTask(template Template) (*kapacitor.Template, error) 
 }
 
 func (ts *Service) startTask(task Task) error {
-	// TODO: maybe not here?
+	// TODO: Pull out this logic into a function
 	p, err := ast.Parse(task.TICKscript)
 	if err != nil {
 		return fmt.Errorf("failed to parse provided tickscript: %v", err)
@@ -1885,6 +1885,7 @@ func (ts *Service) startTask(task Task) error {
 			RetentionPolicy: dbrp.RetentionPolicy,
 		})
 	}
+	// TODO: add dedup logic
 	task.DBRPs = append(task.DBRPs, dbrps...)
 
 	t, err := ts.newKapacitorTask(task)

@@ -8,7 +8,9 @@ import (
 	"path"
 	"time"
 
+	client "github.com/influxdata/kapacitor/client/v1"
 	"github.com/influxdata/kapacitor/services/storage"
+	"github.com/influxdata/kapacitor/tick/ast"
 )
 
 var (
@@ -217,6 +219,46 @@ func (kv *taskKV) Get(id string) (Task, error) {
 	if !ok {
 		return Task{}, fmt.Errorf("impossible error, object not a Task, got %T", o)
 	}
+
+	// TODO: Pull out this logic into a function
+	p, err := ast.Parse(t.TICKscript)
+	if err != nil {
+		return Task{}, fmt.Errorf("failed to parse provided tickscript: %v", err)
+	}
+
+	pn, ok := p.(*ast.ProgramNode)
+	// This should never happen
+	if !ok {
+		return Task{}, errors.New("failed to parse provided tickscript")
+	}
+
+	switch tt := pn.TaskType(); tt {
+	case client.StreamTask:
+		t.Type = StreamTask
+	case client.BatchTask:
+		t.Type = BatchTask
+	default:
+		// TODO: better error about why
+		return Task{}, fmt.Errorf("Bad task type %v", tt)
+	}
+	dbrps := []DBRP{}
+	for _, dbrp := range pn.DBRPs() {
+		isMember := false
+		for _, d := range t.DBRPs {
+			if d.Database == dbrp.Database && d.RetentionPolicy == dbrp.RetentionPolicy {
+				isMember = true
+				break
+			}
+		}
+		if !isMember {
+			dbrps = append(dbrps, DBRP{
+				Database:        dbrp.Database,
+				RetentionPolicy: dbrp.RetentionPolicy,
+			})
+		}
+	}
+	t.DBRPs = append(t.DBRPs, dbrps...)
+
 	return *t, nil
 }
 
@@ -309,6 +351,7 @@ func (d *templateKV) templateTaskAssociationKey(templateId, taskId string) strin
 }
 
 func (d *templateKV) Get(id string) (t Template, err error) {
+	var templateExists bool
 	err = d.store.View(func(tx storage.ReadOnlyTx) error {
 		key := d.templateDataKey(id)
 		if exists, err := tx.Exists(key); err != nil {
@@ -316,6 +359,7 @@ func (d *templateKV) Get(id string) (t Template, err error) {
 		} else if !exists {
 			return ErrNoTemplateExists
 		}
+		templateExists = true
 		kv, err := tx.Get(key)
 		if err != nil {
 			return err
@@ -323,6 +367,29 @@ func (d *templateKV) Get(id string) (t Template, err error) {
 		t, err = d.decodeTemplate(kv.Value)
 		return err
 	})
+	if templateExists {
+		// TODO: Pull out this logic into a function
+		p, err := ast.Parse(t.TICKscript)
+		if err != nil {
+			return Template{}, fmt.Errorf("failed to parse provided tickscript: %v", err)
+		}
+
+		pn, ok := p.(*ast.ProgramNode)
+		// This should never happen
+		if !ok {
+			return Template{}, errors.New("failed to parse provided tickscript")
+		}
+		switch tt := pn.TaskType(); tt {
+		case client.StreamTask:
+			t.Type = StreamTask
+		case client.BatchTask:
+			t.Type = BatchTask
+		default:
+			// TODO: better error about why
+			return Template{}, fmt.Errorf("Bad task type %v", tt)
+		}
+	}
+
 	return
 }
 
