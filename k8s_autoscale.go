@@ -332,7 +332,7 @@ func (k *K8sAutoscaleNode) evalExpr(
 	}
 
 	// Fill the scope with the rest of the values
-	err := fillScope(vars, k.replicasScopePool.ReferenceVariables(), p.Time(), p.Fields(), p.Tags())
+	err := fillScope(vars, k.replicasScopePool.ReferenceVariables(), p)
 	if err != nil {
 		return 0, err
 	}

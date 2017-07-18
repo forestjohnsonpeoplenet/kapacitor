@@ -99,7 +99,7 @@ func (g *stateTrackingGroup) Point(p edge.PointMessage) (edge.Message, error) {
 }
 
 func (g *stateTrackingGroup) track(p edge.FieldsTagsTimeSetter) error {
-	pass, err := EvalPredicate(g.Expression, g.ScopePool, p.Time(), p.Fields(), p.Tags())
+	pass, err := EvalPredicate(g.Expression, g.ScopePool, p)
 	if err != nil {
 		return err
 	}

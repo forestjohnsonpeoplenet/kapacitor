@@ -161,7 +161,7 @@ func (b *combineBuffer) combine() error {
 	}
 	for idx, p := range b.points {
 		for i := range b.expressions {
-			matched, err := EvalPredicate(b.expressions[i], b.n.scopePools[i], p.Time(), p.Fields(), p.Tags())
+			matched, err := EvalPredicate(b.expressions[i], b.n.scopePools[i], p)
 			if err != nil {
 				b.n.incrementErrorCount()
 				b.n.logger.Println("E! evaluating lambda expression:", err)

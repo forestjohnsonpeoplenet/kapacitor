@@ -638,25 +638,25 @@ func (a *AlertNode) handleEvent(event alert.Event) {
 	}
 }
 
-func (a *AlertNode) determineLevel(now time.Time, fields models.Fields, tags map[string]string, currentLevel alert.Level) alert.Level {
-	if higherLevel, found := a.findFirstMatchLevel(alert.Critical, currentLevel-1, now, fields, tags); found {
+func (a *AlertNode) determineLevel(p edge.FieldsTagsTimeGetter, currentLevel alert.Level) alert.Level {
+	if higherLevel, found := a.findFirstMatchLevel(alert.Critical, currentLevel-1, p); found {
 		return higherLevel
 	}
 	if rse := a.levelResets[currentLevel]; rse != nil {
-		if pass, err := EvalPredicate(rse, a.lrScopePools[currentLevel], now, fields, tags); err != nil {
+		if pass, err := EvalPredicate(rse, a.lrScopePools[currentLevel], p); err != nil {
 			a.incrementErrorCount()
 			a.logger.Printf("E! error evaluating reset expression for current level %v: %s", currentLevel, err)
 		} else if !pass {
 			return currentLevel
 		}
 	}
-	if newLevel, found := a.findFirstMatchLevel(currentLevel, alert.OK, now, fields, tags); found {
+	if newLevel, found := a.findFirstMatchLevel(currentLevel, alert.OK, p); found {
 		return newLevel
 	}
 	return alert.OK
 }
 
-func (a *AlertNode) findFirstMatchLevel(start alert.Level, stop alert.Level, now time.Time, fields models.Fields, tags map[string]string) (alert.Level, bool) {
+func (a *AlertNode) findFirstMatchLevel(start alert.Level, stop alert.Level, p edge.FieldsTagsTimeGetter) (alert.Level, bool) {
 	if stop < alert.OK {
 		stop = alert.OK
 	}
@@ -665,7 +665,7 @@ func (a *AlertNode) findFirstMatchLevel(start alert.Level, stop alert.Level, now
 		if se == nil {
 			continue
 		}
-		if pass, err := EvalPredicate(se, a.scopePools[l], now, fields, tags); err != nil {
+		if pass, err := EvalPredicate(se, a.scopePools[l], p); err != nil {
 			a.incrementErrorCount()
 			a.logger.Printf("E! error evaluating expression for level %v: %s", alert.Level(l), err)
 			continue
@@ -760,7 +760,7 @@ func (a *alertState) BufferedBatch(b edge.BufferedBatchMessage) (edge.Message, e
 
 	currentLevel := a.currentLevel()
 	for _, bp := range b.Points() {
-		l := a.n.determineLevel(bp.Time(), bp.Fields(), bp.Tags(), currentLevel)
+		l := a.n.determineLevel(bp, currentLevel)
 		if l < lowestLevel {
 			lowestLevel = l
 		}
@@ -840,7 +840,7 @@ func (a *alertState) Point(p edge.PointMessage) (edge.Message, error) {
 	if err != nil {
 		return nil, err
 	}
-	l := a.n.determineLevel(p.Time(), p.Fields(), p.Tags(), a.currentLevel())
+	l := a.n.determineLevel(p, a.currentLevel())
 
 	a.addEvent(p.Time(), l)
 

@@ -96,14 +96,12 @@ func (e *EvalNode) DeleteGroup(group models.GroupID) {
 }
 
 func (e *EvalNode) eval(expressions []stateful.Expression, p edge.FieldsTagsTimeSetter) error {
-	fields := p.Fields()
-	tags := p.Tags()
 
 	vars := e.scopePool.Get()
 	defer e.scopePool.Put(vars)
 
 	for i, expr := range expressions {
-		err := fillScope(vars, e.refVarList[i], p.Time(), fields, tags)
+		err := fillScope(vars, e.refVarList[i], p)
 		if err != nil {
 			return err
 		}
@@ -114,6 +112,8 @@ func (e *EvalNode) eval(expressions []stateful.Expression, p edge.FieldsTagsTime
 		name := e.e.AsList[i]
 		vars.Set(name, v)
 	}
+	fields := p.Fields()
+	tags := p.Tags()
 	newTags := tags
 	if len(e.tags) > 0 {
 		newTags = newTags.Copy()

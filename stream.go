@@ -129,7 +129,7 @@ func (s *FromNode) matches(p edge.PointMessage) bool {
 		return false
 	}
 	if s.expression != nil {
-		if pass, err := EvalPredicate(s.expression, s.scopePool, p.Time(), p.Fields(), p.Tags()); err != nil {
+		if pass, err := EvalPredicate(s.expression, s.scopePool, p); err != nil {
 			s.incrementErrorCount()
 			s.logger.Println("E! error while evaluating WHERE expression:", err)
 			return false
