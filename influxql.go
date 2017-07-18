@@ -36,7 +36,6 @@ func newInfluxQLNode(et *ExecutingTask, n *pipeline.InfluxQLNode, l *log.Logger)
 	return m, nil
 }
 
-// TODO: remove bulk interfaces
 type reduceContext interface {
 	AggregatePoint(name string, p edge.FieldsTagsTimeGetter) error
 	EmitPoint() (edge.PointMessage, error)
