@@ -1057,7 +1057,9 @@ func (n *ProgramNode) TaskType() (string, error) {
 					case *ChainNode:
 						n = n.(*ChainNode).Left
 					case *IdentifierNode:
-						tts = append(tts, n.(*IdentifierNode).Ident)
+						if ident := n.(*IdentifierNode).Ident; ident == "batch" || ident == "stream" {
+							tts = append(tts, ident)
+						}
 						break Loop1
 					}
 				}
@@ -1070,7 +1072,9 @@ func (n *ProgramNode) TaskType() (string, error) {
 				case *ChainNode:
 					n = n.(*ChainNode).Left
 				case *IdentifierNode:
-					tts = append(tts, n.(*IdentifierNode).Ident)
+					if ident := n.(*IdentifierNode).Ident; ident == "batch" || ident == "stream" {
+						tts = append(tts, ident)
+					}
 					break Loop2
 				}
 			}
