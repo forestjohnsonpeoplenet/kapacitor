@@ -842,6 +842,31 @@ func (ts *Service) handleUpdateTask(w http.ResponseWriter, r *http.Request) {
 		httpd.HttpError(w, "task does not exist, cannot update", true, http.StatusNotFound)
 		return
 	}
+
+	// We need to pull dbrp values from old tickscript if new tickscript isnt provided
+	tickscript := task.TICKscript
+	if task.TICKscript == "" {
+		tickscript = original.TICKscript
+	}
+	p, err := ast.Parse(tickscript)
+	if err != nil {
+		httpd.HttpError(w, fmt.Sprintf("failed to parse provided tickscript: %v", err), true, http.StatusBadRequest)
+		return
+	}
+
+	pn, ok := p.(*ast.ProgramNode)
+	// This should never happen
+	if !ok {
+		httpd.HttpError(w, fmt.Sprint("failed to parse provided tickscript"), true, http.StatusBadRequest)
+		return
+	}
+
+	// TODO: Why?
+	if task.TemplateID == "" {
+		task.Type = pn.TaskType()
+	}
+	task.DBRPs = append(task.DBRPs, pn.DBRPs()...)
+
 	updated := original
 
 	// Set ID if changing
