@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/influxdata/influxdb/influxql"
+	client "github.com/influxdata/kapacitor/client/v1"
 )
 
 // Indent string for formatted TICKscripts
@@ -1026,13 +1027,18 @@ func newProgram(p position) *ProgramNode {
 	}
 }
 
-// TODO: Use Better typing eventually
-func (n *ProgramNode) DBRPs() []string {
-	dbrps := []string{}
+// TODO: Not sure how I feel about client.TaskType importing from client
+func (n *ProgramNode) DBRPs() []client.DBRP {
+	dbrps := []client.DBRP{}
 	for _, nn := range n.Nodes {
 		switch nn.(type) {
 		case *DBRPNode:
-			dbrps = append(dbrps, nn.(*DBRPNode).DBRP())
+			dbrpn := nn.(*DBRPNode)
+			dbrpc := client.DBRP{
+				Database:        dbrpn.DB.Ident,
+				RetentionPolicy: dbrpn.RP.Ident,
+			}
+			dbrps = append(dbrps, dbrpc)
 		default:
 			continue
 		}
@@ -1043,7 +1049,8 @@ func (n *ProgramNode) DBRPs() []string {
 
 // TODO: better type here
 // TODO: add tests
-func (n *ProgramNode) TaskType() (string, error) {
+// TODO: Not sure how I feel about client.TaskType importing from client
+func (n *ProgramNode) TaskType() client.TaskType {
 	tts := []string{}
 	for _, nn := range n.Nodes {
 		switch nn.(type) {
@@ -1084,11 +1091,18 @@ func (n *ProgramNode) TaskType() (string, error) {
 	t := tts[0]
 	for _, tt := range tts[1:] {
 		if t != tt {
-			return "", errors.New("cannot have mixed types")
+			return client.InvalidTask
 		}
 	}
 
-	return t, nil
+	switch t {
+	case "batch":
+		return client.BatchTask
+	case "stream":
+		return client.StreamTask
+	}
+
+	return client.InvalidTask
 }
 
 func (n *ProgramNode) Add(node Node) {

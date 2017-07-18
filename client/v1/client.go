@@ -203,8 +203,9 @@ type ExecutionStats struct {
 type TaskType int
 
 const (
-	StreamTask TaskType = 1
-	BatchTask  TaskType = 2
+	InvalidTask TaskType = 1
+	StreamTask  TaskType = 2
+	BatchTask   TaskType = 3
 )
 
 func (tt TaskType) MarshalText() ([]byte, error) {
