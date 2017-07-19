@@ -475,7 +475,10 @@ func (s *Server) writeData() error {
 }
 
 func (s *Server) writePoint(pt models.Point) error {
-	strs, floats, ints, err := s.fieldsToTypedMaps(pt.Fields)
+	strs, floats, ints, err := s.fieldsToTypedMaps(pt.Name, pt.Fields)
+	if len(strs) + len(floats) + len(ints) == 0 {
+		return nil
+	}
 	if err != nil {
 		return err
 	}
@@ -498,7 +501,7 @@ func (s *Server) writePoint(pt models.Point) error {
 	return s.writeRequest(req)
 }
 
-func (s *Server) fieldsToTypedMaps(fields models.Fields) (
+func (s *Server) fieldsToTypedMaps(name string, fields models.Fields) (
 	strs map[string]string,
 	floats map[string]float64,
 	ints map[string]int64,
@@ -506,6 +509,8 @@ func (s *Server) fieldsToTypedMaps(fields models.Fields) (
 ) {
 	for k, v := range fields {
 		switch value := v.(type) {
+		case bool:
+			// kapacitor does not support boolean values aparently.
 		case string:
 			if strs == nil {
 				strs = make(map[string]string)
@@ -522,7 +527,7 @@ func (s *Server) fieldsToTypedMaps(fields models.Fields) (
 			}
 			ints[k] = value
 		default:
-			err = fmt.Errorf("field: %s, value type: %s", k, v.(type))
+			err = fmt.Errorf("fieldsToTypedMaps: %s value is not a string, int64, or float64. field: %s, value: %s", name, k, value)
 		}
 	}
 	return
@@ -563,7 +568,10 @@ func (s *Server) writeBatch(b models.Batch) error {
 	rp := &Request_Point{}
 	req.Message = rp
 	for _, pt := range b.Points {
-		strs, floats, ints, err := s.fieldsToTypedMaps(pt.Fields)
+		strs, floats, ints, err := s.fieldsToTypedMaps(b.Name, pt.Fields)
+		if len(strs) + len(floats) + len(ints) == 0 {
+			continue
+		}
 		if err != nil {
 			return err
 		}

@@ -1,0 +1,3 @@
+FROM kapacitor:1.2.1
+
+COPY kapacitord /usr/bin/kapacitord
